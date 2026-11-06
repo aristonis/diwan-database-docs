@@ -1,0 +1,25 @@
+/* Brand colours from the logo: a dark header so the gradient mark stands out, violet links and accents. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #07070B;
+  --md-primary-fg-color--light: #14141F;
+  --md-primary-fg-color--dark: #000000;
+  --md-primary-bg-color: #FFFFFF;
+  --md-primary-bg-color--light: #FFFFFFB3;
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #A259FF;
+  --md-accent-fg-color--transparent: #A259FF1A;
+}
+
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: #7C4DFF;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-typeset-a-color: #B98CFF;
+}
+
+.md-header__button.md-logo img {
+  height: 1.8rem;
+}
