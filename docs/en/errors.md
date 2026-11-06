@@ -2,6 +2,15 @@
 
 Every exception in Diwan Database is unchecked. Database failures arrive as `QueryException` or one of its subclasses. The other areas throw their own types, listed below.
 
+## Where they live
+
+| Package | Holds |
+|---|---|
+| `org.aristonis.diwan.database.exception` | Every core exception, and their parent `DatabaseException`. |
+| `org.aristonis.diwan.database.eloquent.exception` | Every model exception, and their parent `EloquentException` (which extends `DatabaseException`). |
+
+Catch `DatabaseException` to handle any failure from the database, a driver, a migration or a model in one place. Mistakes in your own code, such as a wrong argument or a call in the wrong state, are reported with the JDK's `IllegalArgumentException` and `IllegalStateException` instead, so `DatabaseException` does not catch them.
+
 ## QueryException
 
 A `QueryException` means the database refused a statement. It carries:

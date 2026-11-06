@@ -69,7 +69,7 @@ Never:
 
 ## Docs
 
-- Guides: https://docs.aristonis.org/diwan-database/ (getting started, connections, query builder,
+- Guides: https://aristonis.org/open-source/diwan-database/docs/main/home (getting started, connections, query builder,
   schema, migrations, models, relations, Android, errors, API).
 - Source and issues: https://github.com/aristonis/diwan-database (public once released).
 - Skills: the `skills/` folder next to this file.

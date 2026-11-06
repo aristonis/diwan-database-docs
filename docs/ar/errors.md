@@ -2,6 +2,15 @@
 
 كل استثناءات Diwan Database غير مفحوصة (unchecked). تصل أخطاء قاعدة البيانات كـ `QueryException` أو إحدى فئاته الفرعية. وبقية المجالات ترمي أنواعها الخاصة، وهي مسرودة أدناه.
 
+## أين توجد
+
+| الحزمة (package) | ما تحتويه |
+|---|---|
+| `org.aristonis.diwan.database.exception` | كل استثناءات النواة، وأصلها المشترك `DatabaseException`. |
+| `org.aristonis.diwan.database.eloquent.exception` | كل استثناءات النماذج، وأصلها المشترك `EloquentException` (الذي يرث `DatabaseException`). |
+
+التقط `DatabaseException` لتعالج في مكان واحد أي فشل يأتي من قاعدة البيانات أو المشغّل (driver) أو الترحيل أو النموذج. أما أخطاء شيفرتك أنت، مثل وسيط خاطئ أو استدعاء في حالة غير مناسبة، فتُرمى كـ `IllegalArgumentException` و `IllegalStateException` من JDK، فلا يلتقطها `DatabaseException`.
+
 ## QueryException
 
 `QueryException` تعني أن قاعدة البيانات رفضت عبارة. وهي تحمل:

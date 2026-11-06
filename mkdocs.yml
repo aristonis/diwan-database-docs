@@ -1,6 +1,6 @@
 site_name: Diwan Database
 # Set this to your documentation site's public URL once it is live.
-site_url: https://docs.aristonis.org/diwan-database/
+site_url: https://aristonis.org/open-source/diwan-database/docs/main/home
 repo_url: https://github.com/aristonis/diwan-database
 repo_name: aristonis/diwan-database
 
@@ -59,6 +59,7 @@ nav:
   - API reference: api.md
   - Upgrade guide: upgrade.md
   - Releases: releases.md
+  - Roadmap: roadmap.md
 
 extra_css:
   - stylesheets/brand.css
