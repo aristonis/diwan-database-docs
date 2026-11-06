@@ -87,7 +87,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/aristonis/diwan-database
     - icon: fontawesome/solid/box
-      link: https://packagist.org/packages/aristonis/diwan-database
+      link: https://central.sonatype.com/artifact/org.aristonis/diwan-database
 
 markdown_extensions:
   - admonition
