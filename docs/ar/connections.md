@@ -2,41 +2,11 @@
 
 `Connection` يرسل SQL إلى قاعدة بيانات واحدة. و`DatabaseManager` يبني اتصالات مُسمّاة من الإعدادات. وكلاهما آمن للمشاركة بين الخيوط (threads).
 
-## اتصال مباشر
-
-```java
-Connection db = Connection.builder()
-        .name("main")
-        .dataSource(dataSource)        // any javax.sql.DataSource, pooled or not
-        .build();
-```
-
-| دالة الـ builder (باني الكائن) | الأثر |
-|---|---|
-| `name(String)` | الاسم الظاهر في الأخطاء والأحداث. |
-| `dataSource(DataSource)` | مصدر JDBC (واجهة Java للاتصال بقواعد البيانات). استعمل `driver(Driver)` بدلًا منه على Android، أو `connectionProvider(...)` داخل Spring. |
-| `tablePrefix(String)` | حروف وأرقام وشرطة سفلية فقط. لا يُعاد كتابة SQL الخام أبدًا. |
-| `showBindingsInErrors(boolean)` | مُطفأ افتراضيًا. انظر [الأخطاء](errors.md). |
-| `strictTransactions(boolean)` | مُفعّل افتراضيًا. انظر أدناه. |
-| `listener(ConnectionListener)` | يضيف مستمعًا (listener). |
-| `queryLogLimit(int)` | حجم سجل الاستعلامات، 1000 افتراضيًا. |
-| `onCleanupFailure(Consumer<Throwable>)` | يستلم فشل إرجاع الاتصال بعد نجاح العمل. الافتراضي يكتب تحذيرًا في السجل. |
-
-الدوال التي تستدعيها عليه:
-
-| تريد أن | استدعِ |
-|---|---|
-| تشغّل أي عبارة | `statement` و`unprepared` (SQL خام بلا bindings) |
-| تغيّر صفوفًا وتأخذ العدد | `insert` و`update` و`delete` و`affectingStatement` |
-| تقرأ صفوفًا | `select` (كل الصفوف) و`selectOne` (أول صف أو فارغ) و`scalar` (قيمة واحدة أو فارغ) و`cursor` (بث الصفوف) |
-| تجمّع عملًا | `transaction(callback)` و`beginTransaction()` |
-| ترى SQL دون تشغيله | `pretend(callback)` |
-
-كل استدعاء خارج المعاملة يستعير اتصالًا من الـ pool (مجمّع الاتصالات) ويعيده قبل أن ينتهي الاستدعاء. وترمي `scalar` الاستثناء `MultipleColumnsSelectedException` إذا كان في الصف أكثر من عمود.
-
 ## DatabaseManager
 
 يقرأ الـ manager الإعدادات عبر `ConfigSource` ويبني كل اتصال عند أول طلب، مرة واحدة لكل اسم حتى مع الاستدعاءات المتزامنة.
+
+يطلب كودك من الـ manager ما يحتاجه ولا يذكر صنف driver أبدًا: `manager.query()` تعيد `QueryFactory` و`manager.schema()` تعيد `Schema` و`manager.migrator(name)` تعيد `Migrator.Builder`، وكلها تُبنى من إعداد `driver` للاتصال. الانتقال من SQLite إلى PostgreSQL تغيير في الإعداد فقط.
 
 ```properties
 # database.properties
@@ -109,6 +79,40 @@ DatabaseManager db = DatabaseManager.builder()
 - لا تفعل purge لاتصال يشغّل عبارة الآن.
 - قاعدة SQLite في الذاكرة تستعمل اتصالًا حقيقيًا واحدًا يُعار لجلسة واحدة في كل مرة. والجلسة الثانية على الخيط نفسه تنتظر `busy_timeout` كاملًا ثم تفشل.
 
+## بدون manager
+
+```java
+Connection db = Connection.builder()
+        .name("main")
+        .dataSource(dataSource)        // any javax.sql.DataSource, pooled or not
+        .build();
+```
+
+| دالة الـ builder (باني الكائن) | الأثر |
+|---|---|
+| `name(String)` | الاسم الظاهر في الأخطاء والأحداث. |
+| `dataSource(DataSource)` | مصدر JDBC (واجهة Java للاتصال بقواعد البيانات). استعمل `driver(Driver)` بدلًا منه على Android، أو `connectionProvider(...)` داخل Spring. |
+| `tablePrefix(String)` | حروف وأرقام وشرطة سفلية فقط. لا يُعاد كتابة SQL الخام أبدًا. |
+| `showBindingsInErrors(boolean)` | مُطفأ افتراضيًا. انظر [الأخطاء](errors.md). |
+| `strictTransactions(boolean)` | مُفعّل افتراضيًا. انظر أدناه. |
+| `listener(ConnectionListener)` | يضيف مستمعًا (listener). |
+| `queryLogLimit(int)` | حجم سجل الاستعلامات، 1000 افتراضيًا. |
+| `onCleanupFailure(Consumer<Throwable>)` | يستلم فشل إرجاع الاتصال بعد نجاح العمل. الافتراضي يكتب تحذيرًا في السجل. |
+
+الدوال التي تستدعيها عليه:
+
+| تريد أن | استدعِ |
+|---|---|
+| تشغّل أي عبارة | `statement` و`unprepared` (SQL خام بلا bindings) |
+| تغيّر صفوفًا وتأخذ العدد | `insert` و`update` و`delete` و`affectingStatement` |
+| تقرأ صفوفًا | `select` (كل الصفوف) و`selectOne` (أول صف أو فارغ) و`scalar` (قيمة واحدة أو فارغ) و`cursor` (بث الصفوف) |
+| تجمّع عملًا | `transaction(callback)` و`beginTransaction()` |
+| ترى SQL دون تشغيله | `pretend(callback)` |
+
+كل استدعاء خارج المعاملة يستعير اتصالًا من الـ pool (مجمّع الاتصالات) ويعيده قبل أن ينتهي الاستدعاء. وترمي `scalar` الاستثناء `MultipleColumnsSelectedException` إذا كان في الصف أكثر من عمود.
+
+للحصول على الـ factories من `Connection` بنيته بنفسك، استعمل وحدة الـ grammar مباشرة: `SQLiteQuery.of(db)` و`SQLiteSchema.of(db)`، أو `PostgresQuery.of(db)` و`PostgresSchema.of(db)`.
+
 ## المعاملات
 
 ```java
@@ -118,7 +122,7 @@ int removed = db.transaction(tx -> {
 });
 ```
 
-تُثبَّت المعاملة (commit) حين يعود الـ callback (دالة يستدعيها النظام)، وتُلغى (rollback) حين يرمي. استعمل الاتصال الذي سُلّم إليك (`tx`) لكل شيء بالداخل.
+تُثبَّت المعاملة (commit) حين يعود الـ callback (دالة يستدعيها النظام)، وتُلغى (rollback) حين يرمي. استعمل الاتصال الذي سُلّم إليك (`tx`) لكل شيء بالداخل. وداخل المعاملة استدعِ `db.on(tx)` حتى يعمل العمل على المعاملة.
 
 مع try-with-resources يلغي الـ scope المعاملة عند الإغلاق ما لم تُنفَّذ `commit()`:
 
@@ -254,3 +258,14 @@ DatabaseManager db = DatabaseManager.builder()
 يعمل الـ supplier حين يُبنى الاتصال أول مرة. وتغلق Diwan الـ data source الذي يطبّق `AutoCloseable` عند `purge` أو `close`، و`HikariDataSource` كذلك. واسم غير مُعدّ يُرفض عند بناء الـ manager. ومع الاتصال المباشر مرّر الـ pool إلى `Connection.builder().dataSource(pool)` وأغلقه بنفسك.
 
 اجعل حجم الـ pool يكفي على الأقل لعدد الخيوط التي تشغّل معاملات في الوقت نفسه. الـ cursor (مؤشر يقرأ الصفوف واحدًا واحدًا) يمسك اتصاله حتى يُغلق، فـ pool من اتصال واحد يتجمّد إذا كتبت داخل الحلقة.
+
+## مرجع الدوال
+
+الدوال العامة التي لا تغطيها الأقسام السابقة، بصف واحد لكل اسم دالة (الـ overloads في صف واحد).
+
+| الدالة | على | ماذا تفعل | مثال |
+|---|---|---|---|
+| `getName` `getTablePrefix` `getDriverInfo` | `Connection` | معلومات الاتصال: الاسم الذي بُني به، والبادئة المضافة لأسماء الجداول، ووصف قاعدة البيانات خلفه. | `conn.getTablePrefix()` |
+| `canDeferUntilCommit` | `Connection` | تخبر هل يمكن لـ `afterCommit(Runnable)` الانتظار حتى commit على هذا الاتصال. | `conn.canDeferUntilCommit()` |
+| `getDefaultConnection` | `DatabaseManager` | تعيد اسم الاتصال الذي تستخدمه `connection()` في هذا الـ thread. | `db.getDefaultConnection()` |
+| `seed` | `DatabaseManager` | تشغّل seeder على الاتصال الافتراضي، خارج transaction. | `db.seed(new UserSeeder())` |

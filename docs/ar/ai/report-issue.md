@@ -2,6 +2,10 @@
 
 بلّغ عن خلل في المكتبة على https://github.com/aristonis/diwan-database/issues. رابط المستودع يعمل حين يصبح المشروع عامًا.
 
+## المشكلات الأمنية
+
+المشكلة الأمنية لا تُقدَّم كـ issue عامة. بلّغ عنها بسرية على https://github.com/aristonis/diwan-database/security/advisories/new (الإبلاغ الخاص عن الثغرات في GitHub)، بالتفاصيل نفسها أدناه. لا تستعمل `gh issue create` لها أبدًا، ولا يجوز للـ agent ذلك.
+
 ## قبل أن تبلّغ
 
 1. راجع الدليل الخاص بالميزة. بعض السلوك مذكور في [الفروق عن Laravel](../differences.md) أو [الأخطاء والاستثناءات](../errors.md).

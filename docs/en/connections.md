@@ -2,41 +2,11 @@
 
 A `Connection` sends SQL to one database. A `DatabaseManager` builds named connections from configuration. Both are safe to share between threads.
 
-## A direct connection
-
-```java
-Connection db = Connection.builder()
-        .name("main")
-        .dataSource(dataSource)        // any javax.sql.DataSource, pooled or not
-        .build();
-```
-
-| Builder method | Effect |
-|---|---|
-| `name(String)` | The name shown in errors and events. |
-| `dataSource(DataSource)` | The JDBC source. Use `driver(Driver)` instead for Android, or `connectionProvider(...)` inside Spring. |
-| `tablePrefix(String)` | Letters, digits and underscores only. Raw SQL is never rewritten. |
-| `showBindingsInErrors(boolean)` | Off by default. See [Errors](errors.md). |
-| `strictTransactions(boolean)` | On by default. See below. |
-| `listener(ConnectionListener)` | Attaches a listener. |
-| `queryLogLimit(int)` | Size of the query log, 1000 by default. |
-| `onCleanupFailure(Consumer<Throwable>)` | Receives a failure to return a connection after the work succeeded. The default logs a warning. |
-
-The methods you call on it:
-
-| You want to | Call |
-|---|---|
-| Run any statement | `statement`, `unprepared` (raw SQL, no bindings) |
-| Change rows and get a count | `insert`, `update`, `delete`, `affectingStatement` |
-| Read rows | `select` (all rows), `selectOne` (first row or empty), `scalar` (one value or empty), `cursor` (stream rows) |
-| Group work | `transaction(callback)`, `beginTransaction()` |
-| See SQL without running it | `pretend(callback)` |
-
-Each call outside a transaction borrows a pooled connection and returns it before the call ends. `scalar` throws `MultipleColumnsSelectedException` when the row has more than one column.
-
 ## DatabaseManager
 
 The manager reads configuration through a `ConfigSource` and builds each connection the first time you ask for it, once per name even under concurrent calls.
+
+Your code asks the manager for what it needs and never names a driver class: `manager.query()` returns the `QueryFactory`, `manager.schema()` the `Schema` and `manager.migrator(name)` a `Migrator.Builder`, all built from the connection's `driver` setting. Switching from SQLite to PostgreSQL is a configuration change.
 
 ```properties
 # database.properties
@@ -109,6 +79,40 @@ DatabaseManager db = DatabaseManager.builder()
 - Do not purge a connection that is running a statement.
 - An in-memory SQLite database uses one real connection, lent to one session at a time. A second session on the same thread waits the full `busy_timeout` and then fails.
 
+## Without a manager
+
+```java
+Connection db = Connection.builder()
+        .name("main")
+        .dataSource(dataSource)        // any javax.sql.DataSource, pooled or not
+        .build();
+```
+
+| Builder method | Effect |
+|---|---|
+| `name(String)` | The name shown in errors and events. |
+| `dataSource(DataSource)` | The JDBC source. Use `driver(Driver)` instead for Android, or `connectionProvider(...)` inside Spring. |
+| `tablePrefix(String)` | Letters, digits and underscores only. Raw SQL is never rewritten. |
+| `showBindingsInErrors(boolean)` | Off by default. See [Errors](errors.md). |
+| `strictTransactions(boolean)` | On by default. See below. |
+| `listener(ConnectionListener)` | Attaches a listener. |
+| `queryLogLimit(int)` | Size of the query log, 1000 by default. |
+| `onCleanupFailure(Consumer<Throwable>)` | Receives a failure to return a connection after the work succeeded. The default logs a warning. |
+
+The methods you call on it:
+
+| You want to | Call |
+|---|---|
+| Run any statement | `statement`, `unprepared` (raw SQL, no bindings) |
+| Change rows and get a count | `insert`, `update`, `delete`, `affectingStatement` |
+| Read rows | `select` (all rows), `selectOne` (first row or empty), `scalar` (one value or empty), `cursor` (stream rows) |
+| Group work | `transaction(callback)`, `beginTransaction()` |
+| See SQL without running it | `pretend(callback)` |
+
+Each call outside a transaction borrows a pooled connection and returns it before the call ends. `scalar` throws `MultipleColumnsSelectedException` when the row has more than one column.
+
+To get the factories from a `Connection` you built yourself, use the grammar module directly: `SQLiteQuery.of(db)` and `SQLiteSchema.of(db)`, or `PostgresQuery.of(db)` and `PostgresSchema.of(db)`.
+
 ## Transactions
 
 ```java
@@ -118,7 +122,7 @@ int removed = db.transaction(tx -> {
 });
 ```
 
-The transaction commits when the callback returns and rolls back when it throws. Use the connection you were handed (`tx`) for everything inside.
+The transaction commits when the callback returns and rolls back when it throws. Use the connection you were handed (`tx`) for everything inside. Inside a transaction, call `db.on(tx)` so the work runs on the transaction.
 
 With try-with-resources, a scope that rolls back on close unless `commit()` ran:
 
@@ -254,3 +258,14 @@ DatabaseManager db = DatabaseManager.builder()
 The supplier runs when the connection is first built. Diwan closes a data source that is `AutoCloseable` on `purge` or `close`, and `HikariDataSource` is. A name that is not configured is refused when the manager is built. With a direct connection, pass the pool to `Connection.builder().dataSource(pool)` and close it yourself.
 
 Size the pool for at least the threads that run transactions at once. A cursor holds its connection until it is closed, so a pool of one deadlocks if you write inside the loop.
+
+## Method reference
+
+Public methods that the sections above do not cover, one row per method name (overloads share a row).
+
+| Method | On | What it does | Example |
+|---|---|---|---|
+| `getName` `getTablePrefix` `getDriverInfo` | `Connection` | Connection facts: the name the connection was built with, the prefix added to table names, and a description of the database behind it. | `conn.getTablePrefix()` |
+| `canDeferUntilCommit` | `Connection` | Tells whether `afterCommit(Runnable)` can wait for a commit on this connection. | `conn.canDeferUntilCommit()` |
+| `getDefaultConnection` | `DatabaseManager` | Returns the name of the connection `connection()` uses on this thread. | `db.getDefaultConnection()` |
+| `seed` | `DatabaseManager` | Runs a seeder with the default connection, outside a transaction. | `db.seed(new UserSeeder())` |

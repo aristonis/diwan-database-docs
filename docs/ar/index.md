@@ -4,6 +4,18 @@ Diwan Database هي نسخة Java من طبقة قواعد البيانات في
 
 أنت تكتب SQL واستدعاءات الـ query builder (باني الاستعلامات) والـ `migration` (تهجير قاعدة البيانات) والـ models (النماذج). والمكتبة ترسلها إلى SQLite أو PostgreSQL، على الخادم أو سطح المكتب أو Android.
 
+## نظرة أولى
+
+يطلب كودك من `DatabaseManager` ما يحتاجه. الـ driver قيمة في الإعداد، فالانتقال من SQLite إلى PostgreSQL يغيّر الإعداد لا الكود.
+
+```java
+QueryFactory db = manager.query();      // from the connection's configuration, no driver class in your code
+db.table("users").insert(Map.of("email", "ada@example.com"));
+List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).get();
+```
+
+تبني صفحة [البدء](getting-started.md) الـ manager.
+
 ## الوحدات
 
 | الوحدة | الإحداثيات | ماذا تعطيك |
@@ -22,6 +34,10 @@ Diwan Database هي نسخة Java من طبقة قواعد البيانات في
 - قواعد البيانات: SQLite وPostgreSQL. MySQL وSQL Server غير مدعومتين.
 
 الإصدار 0.1.0 غير منشور بعد. ابنِه محليًا بالأمر `./gradlew check` إلى أن يُنشر.
+
+## الأمان
+
+بلّغ عن الثغرات بسرية عبر [الإبلاغ الخاص عن الثغرات في GitHub](https://github.com/aristonis/diwan-database/security/advisories/new). لا تفتح أبدًا issue عامة بخصوصها.
 
 ## إلى أين تذهب بعد ذلك
 

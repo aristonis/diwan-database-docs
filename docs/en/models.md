@@ -25,11 +25,10 @@ public final class User extends Model {
     }
 }
 
-ModelQuery<User> users = User.query.on(SQLiteQuery.of(db));
+ModelQuery<User> users = User.query.on(manager.query());
 ```
 
-`on(...)` binds the entry to a query factory. Inside a transaction, bind to the transaction's
-connection with `users.on(c)` so every statement runs in it.
+`on(...)` binds the entry to a query factory, normally `manager.query()`, so the model never names a driver class. Inside a transaction, bind with `User.query.on(db.on(tx))` so every statement runs on the transaction.
 
 ## Configure a model
 
@@ -260,3 +259,60 @@ page. `simplePaginate` and `cursorPaginate` work as on the query builder.
 
 See [Relations](relations.md) for relations, [Differences from Laravel](differences.md) and
 [Errors](errors.md).
+
+## Method reference
+
+Public methods that the sections above do not cover, one row per method name (overloads share a row).
+
+| Method | On | What it does | Example |
+|---|---|---|---|
+| `getInteger` `getLong` `getDouble` `getBigDecimal` `getBoolean` `getInstant` | `Model` | Typed reads of an attribute: from any whole number or numeric text (`getInteger`, `getLong`), a number (`getDouble`), an exact decimal (`getBigDecimal`), a boolean (`getBoolean`: non-zero or `1`/`true`) or a moment (`getInstant`). | `post.getInteger("views")` |
+| `hasAttribute` | `Model` | Returns whether the model holds an attribute, even a null one. | `post.hasAttribute("title")` |
+| `hasCast` `getCasts` `mergeCasts` `withCasts` | `Model`, `EloquentBuilder` | Casts: `hasCast` tells whether an attribute has one, `getCasts` returns the resolved casts, `mergeCasts` adds casts to one instance and `withCasts` (on a query) casts columns of every model it reads. | `post.mergeCasts(Map.of("meta", "json"))` |
+| `getOriginal` `getRawOriginal` `originalIsEquivalent` | `Model` | `getOriginal` returns an attribute's original value through its accessor or cast, `getRawOriginal` as stored with no cast, and `originalIsEquivalent` tells whether the current value equals the original. | `post.getRawOriginal("title")` |
+| `isClean` `wasChanged` `getChanges` `getPrevious` | `Model` | Dirty tracking: `isClean` (no given attribute differs from its original), `wasChanged` and `getChanges` (what the last save changed) and `getPrevious` (the values it replaced). | `post.wasChanged("title")` |
+| `syncOriginal` `syncOriginalAttribute` `syncOriginalAttributes` `syncChanges` `discardChanges` `setRawAttributes` | `Model` | Reset the change baseline: make current values the originals (all, one or several), record the last save's changes (`syncChanges`), put every attribute back to its original (`discardChanges`), or replace every attribute raw (`setRawAttributes`). | `post.discardChanges()` |
+| `preventSilentlyDiscardingAttributes` | `Model` | Sets, for every model in the process, whether `fill` throws for keys it would otherwise drop silently. | `Model.preventSilentlyDiscardingAttributes(true)` |
+| `getFillable` `getGuarded` `isFillable` `isGuarded` `isUnguarded` `totallyGuarded` | `Model` | Mass assignment settings: the fillable and guarded keys, whether one key may be set, whether guarding is off on this thread, and whether the model allows no mass assignment at all. | `post.isFillable("title")` |
+| `getHidden` `getVisible` `setHidden` `setVisible` `makeHidden` `makeVisible` `getAppends` `setAppends` `append` `withoutAppends` | `Model` | Serialization lists: read or replace the hidden, visible and appended (computed) attributes, add to them (`makeHidden`, `append`), show hidden ones (`makeVisible`) or remove every appended one (`withoutAppends`). | `post.makeHidden("secret")` |
+| `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | Model settings as the model resolves them: table, primary key name and type, whether the database assigns the key, the key qualified by table (`users.id`), a column qualified by table, the foreign key name other tables use for this model, the default page size and the unique id kind. | `post.getQualifiedKeyName()` |
+| `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | Connection access: the model's connection and its name, binding the model to a query factory (`setConnection`), the factory it uses, and a new base query builder on the model's table. | `post.newBaseQuery().where("id", 1)` |
+| `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | Time and JSON settings: the codec behind JSON casts and the JSON form, the pattern of text timestamps, how timestamps are written, and the clock the model reads timestamps from. | `post.setClock(clock)` |
+| `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | Timestamp columns: the created-at, updated-at and deleted-at column names (the last one also qualified by table), and whether the model writes timestamps now. | `post.usesTimestamps()` |
+| `freshTimestamp` `freshTimestampValue` `fromDateTime` `updateTimestamps` | `Model` | Timestamp helpers: the current moment from the model's clock, in the form the model stores, converting a moment to that form, and setting `updated_at` (and `created_at` on a new model) unless already dirty. | `post.updateTimestamps()` |
+| `withoutTimestamps` `withoutTouchingOn` `touch` `touchQuietly` `touchOwners` | `Model` | Touching: `touch` updates the timestamps and saves, `touchQuietly` does it with listeners silenced, `touchOwners` sets `updated_at` on the relations named in `touches()`, `withoutTimestamps` and `withoutTouchingOn` run a callback with timestamps or owner touches off on this thread. | `post.touch()` |
+| `decrement` | `Model`, `EloquentBuilder` | Subtracts an amount (1 by default) from a column of this model's row, as `increment` does for adding; returns the affected rows. | `post.decrement("stock")` |
+| `is` `isNot` | `Model` | Tell whether another model is the same row (same key, table and connection name), or not. | `a.is(b)` |
+| `fresh` | `Model`, `ModelCollection` | Returns a new instance loaded from the database by the key as last read (a collection returns the fresh list). | `post.fresh()` |
+| `newInstance` `withoutRelations` `replicate` `replicateQuietly` | `Model` | Copies: `newInstance` makes an empty instance bound to the same connection and clock, `withoutRelations` copies the model without loaded relations, `replicate` makes an unsaved copy without the key and timestamps, and `replicateQuietly` copies with the registered listeners silenced. | `post.replicate()` |
+| `forceDeleteQuietly` `restoreQuietly` `updateQuietly` | `Model` | Delete for good, restore or update a model with the registered listeners silenced. | `post.updateQuietly(Map.of("title", "x"))` |
+| `isForceDeleting` `isSoftDeletable` `wasRecentlyCreated` | `Model` | State checks: a `forceDelete()` is running, the model opts in to soft deletes, the last save inserted the row. | `post.wasRecentlyCreated()` |
+| `getMorphClass` | `Model` | Returns the name stored in a morph type column for this model. | `post.getMorphClass()` |
+| `relation` `getRelation` `getRelationValue` `getRelations` `relationLoaded` `setRelation` `setRelations` `unsetRelation` | `Model` | Relation state: build a relation by name (`relation`), read a loaded one without loading (`getRelation`), read it or load it lazily (`getRelationValue`), read all loaded relations, test whether one is loaded, and set, replace or forget loaded relations. | `post.relationLoaded("user")` |
+| `loadAggregate` `loadAvg` `loadMax` `loadMin` `loadSum` `loadMorph` `loadMorphCount` | `Model`, `ModelCollection` | Load aggregates of a related column onto the model (`loadSum`, `loadAvg`, `loadMax`, `loadMin`, `loadAggregate`), and load relations or counts onto the owner a morph-to relation has loaded, chosen by the owner's class (`loadMorph`, `loadMorphCount`). They also exist on `ModelCollection`. | `post.loadSum("comments", "votes")` |
+| `count` | `EloquentBuilder` | Counts the matching rows (the aggregate forms `sum`, `avg`, `min` and `max` work the same way). | `Post.query().where("published", true).count()` |
+| `all` | `ModelQuery` | Returns every model of the table. | `Post.query().all()` |
+| `destroy` `forceDestroy` | `ModelQuery` | Load the models with the given keys and delete each one, so each runs its hooks (`forceDestroy` includes trashed ones and deletes them for good). | `Post.query().destroy(1, 2)` |
+| `forceCreate` | `EloquentBuilder`, `ModelQuery` | Fills a new model from a map ignoring the guards, and saves it. | `Post.query().forceCreate(attrs)` |
+| `createOrFirst` | `EloquentBuilder` | Creates a model; when a unique index refuses it, returns the existing match instead. | `Post.query().createOrFirst(attrs)` |
+| `findMany` `findOr` `findOrNew` `firstOr` `firstOrFail` `firstWhere` `sole` | `EloquentBuilder`, `ModelQuery` | More finders: `findMany` (several keys, no query for an empty list), `findOr`/`firstOr` (callback result when none), `findOrNew` (a new unsaved model), `firstOrFail`, `firstWhere` (column equals value) and `sole` (the only match, reading at most two rows). | `Post.query().firstWhere("slug", s)` |
+| `each` `lazyById` | `EloquentBuilder` | Read in bulk: `each` hands every model to a predicate (until it returns false); `lazyById` returns the models as a lazy sequence read in chunks by primary key. | See [Chunks, lazy reads, cursors and pages](#chunks-lazy-reads-cursors-and-pages) |
+| `hydrate` | `EloquentBuilder`, `ModelQuery` | Builds models from raw rows without running a query. | `Post.query().hydrate(rows)` |
+| `getModel` `getModelClass` `newModel` | `EloquentBuilder`, `ModelQuery` | The model the query is built on: an instance of it (`getModel`), its class (`getModelClass`), or a new empty model bound to the entry's connection and clock (`newModel`). | `Post.query().newModel()` |
+| `using` `withClock` | `ModelQuery` | Return an entry whose models find their factory by connection name in a resolver (`using`), or read timestamps from a given clock (`withClock`). | `Post.query().withClock(clock)` |
+| `preventsLazyLoading` | `ModelQuery` | Returns whether lazy loading is prevented, as set by `preventLazyLoading(boolean)`. | `Post.query().preventsLazyLoading()` |
+| `addGlobalScopes` `clearGlobalScopes` `getGlobalScope` `getGlobalScopes` `hasGlobalScope` `removeGlobalScope` `withGlobalScope` `withoutGlobalScopesExcept` `removedScopes` `scopes` | `ModelQuery`, `EloquentBuilder` | Scope registry: add several global scopes at once, clear, get, list, test or remove them by name, add one to a single query, drop every scope but the named ones, list the removed names, and apply several local scopes in order (`scopes`). | `Post.query().withoutGlobalScopesExcept("tenant")` |
+| `withoutTrashed` | `EloquentBuilder` | Excludes soft-deleted rows, also after `withTrashed()`. | `Post.query().withoutTrashed()` |
+| `withOnly` `without` `getEagerLoads` | `EloquentBuilder` | Eager loads: `withOnly` replaces every eager load, `without` removes eager loads by exact path (`without("posts")` keeps `posts.comments`), `getEagerLoads` returns the current set. | `Post.query().withOnly("user")` |
+| `toBase` `getBindings` `toSql` `lock` `lockForUpdate` `sharedLock` | `EloquentBuilder` | Reach the SQL layer: a copy of the wrapped query builder with global scopes applied (`toBase`), the select's bindings and SQL (`getBindings`, `toSql`), and row locks (`lock`, `lockForUpdate`, `sharedLock`). | `Post.query().lockForUpdate()` |
+| `forPage` `skip` `take` `reorder` `inRandomOrder` `oldest` `orderByDesc` `orderByRaw` `pluck` `value` `selectRaw` `leftJoin` | `EloquentBuilder` | Query builder methods that `EloquentBuilder` forwards, with the same meaning as on the query builder: paging (`forPage`, `skip`, `take`), ordering (`reorder`, `inRandomOrder`, `oldest`, `orderByDesc`, `orderByRaw`), reads (`pluck`, `value`), `selectRaw` and `leftJoin`. | See [Query builder](query-builder.md) |
+| `whereKey` `whereKeyNot` | `EloquentBuilder` | Constrain the qualified primary key: `users.id = ?`, or `in` for a collection (`whereKeyNot` excludes). | `Post.query().whereKey(ids)` |
+| `whereGroup` `orWhereGroup` | `EloquentBuilder` | Add a parenthesised group of clauses built on an Eloquent builder for the same model (`orWhereGroup` joins with OR), as Laravel's `where(Closure)`. | `q.whereGroup(g -> g.where("a", 1).orWhere("b", 2))` |
+| `whereInstantBetween` | `EloquentBuilder` | Adds a clause for moments in a half-open range. | `q.whereInstantBetween("created_at", from, to)` |
+| `whereBetween` `whereNotBetween` `orWhereBetween` `whereColumn` `orWhereColumn` `whereDate` `whereDay` `whereMonth` `whereYear` `whereTime` `whereExists` `whereNotExists` `whereIn` `whereNotIn` `orWhereIn` `orWhereNotIn` `whereLike` `whereNotLike` `orWhereLike` `whereNot` `orWhereNot` `whereNull` `orWhereNull` `whereNotNull` `orWhereNotNull` `whereRaw` `orWhereRaw` | `EloquentBuilder` | The query builder's `where` family, also available on `EloquentBuilder` with the same meaning (`or...` forms join with OR). | See [Query builder](query-builder.md) |
+| `whereDoesntHave` `orWhereDoesntHave` `orDoesntHave` `orHas` `orWhereHas` `orWhereRelation` | `EloquentBuilder` | Relation existence with `OR` and negation: no related model matching a constraint (`whereDoesntHave`), the `or` forms, and an or condition on a related model's column (`orWhereRelation`). | `Post.query().whereDoesntHave("comments")` |
+| `whereDoesntHaveMorph` `doesntHaveMorph` `orDoesntHaveMorph` `orHasMorph` `orWhereDoesntHaveMorph` `orWhereHasMorph` `whereMorphRelation` `whereMorphDoesntHaveRelation` `orWhereMorphRelation` `orWhereMorphDoesntHaveRelation` `whereNotMorphedTo` `orWhereMorphedTo` `orWhereNotMorphedTo` | `EloquentBuilder` | Morph-to existence queries: an owner of one of the given types (or none), with a constraint or a column comparison, and whether a morph-to points at a target. The `or` forms join with OR. | `q.orHasMorph("imageable", Post.class)` |
+| `contains` `modelKeys` `size` | `ModelCollection` | Collection basics: whether the list holds a model (the same row, or a model with a primary key), the primary keys in list order, and the number of models. | `posts.modelKeys()` |
+| `hasMorePages` | `ModelPage`, `SimpleModelPage` | Returns whether a page follows this one. | `page.hasMorePages()` |
+| `currentPage` `lastPage` | `ModelPage`, `SimpleModelPage` | Page numbers on a page object: the current page from 1, and the last page. | `page.lastPage()` |
+| `nextCursor` `previousCursor` | `CursorModelPage` | Return the cursor of the page after, or before, this one. | `page.nextCursor()` |

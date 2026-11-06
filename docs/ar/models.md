@@ -24,11 +24,11 @@ public final class User extends Model {
     }
 }
 
-ModelQuery<User> users = User.query.on(SQLiteQuery.of(db));
+ModelQuery<User> users = User.query.on(manager.query());
 ```
 
-تربط `on(...)` المدخل بـ query factory (مصنع الاستعلامات). داخل transaction (معاملة) اربط النموذج باتصال المعاملة عبر `users.on(c)`
-حتى تعمل كل العبارات داخلها.
+تربط `on(...)` المدخل بـ query factory (مصنع الاستعلامات)، وعادةً `manager.query()`، فلا يذكر النموذج أي صنف driver. داخل transaction (معاملة) اربط النموذج عبر `User.query.on(db.on(tx))`
+حتى تعمل كل العبارات على المعاملة.
 
 ## ضبط النموذج
 
@@ -245,3 +245,60 @@ page.total();
 - تنتمي الـ listeners والـ scopes إلى الصنف المسجَّل عبر `ModelQuery.of`؛ والصنف الفرعي المسجَّل منفصلًا له قائمته الخاصة.
 
 انظر [العلاقات](relations.md) و[الفروق عن Laravel](differences.md) و[الأخطاء](errors.md).
+
+## مرجع الدوال
+
+الدوال العامة التي لا تغطيها الأقسام السابقة، بصف واحد لكل اسم دالة (الـ overloads في صف واحد).
+
+| الدالة | على | ماذا تفعل | مثال |
+|---|---|---|---|
+| `getInteger` `getLong` `getDouble` `getBigDecimal` `getBoolean` `getInstant` | `Model` | قراءات مُنمَّطة لخاصية: من أي عدد صحيح أو نص رقمي (`getInteger` و`getLong`)، أو رقم (`getDouble`)، أو عشري دقيق (`getBigDecimal`)، أو boolean (`getBoolean`: غير صفر أو `1`/`true`)، أو لحظة زمنية (`getInstant`). | `post.getInteger("views")` |
+| `hasAttribute` | `Model` | تعيد هل يحمل النموذج خاصية، حتى لو كانت قيمتها null. | `post.hasAttribute("title")` |
+| `hasCast` `getCasts` `mergeCasts` `withCasts` | `Model`, `EloquentBuilder` | الـ casts: `hasCast` تخبر هل للخاصية cast، و`getCasts` تعيد الـ casts المحسومة، و`mergeCasts` تضيف casts لنسخة واحدة، و`withCasts` (على الاستعلام) تطبق casts على كل نموذج يقرؤه. | `post.mergeCasts(Map.of("meta", "json"))` |
+| `getOriginal` `getRawOriginal` `originalIsEquivalent` | `Model` | `getOriginal` تعيد القيمة الأصلية لخاصية عبر الـ accessor أو الـ cast، و`getRawOriginal` كما خُزّنت بلا cast، و`originalIsEquivalent` تخبر هل القيمة الحالية تساوي الأصلية. | `post.getRawOriginal("title")` |
+| `isClean` `wasChanged` `getChanges` `getPrevious` | `Model` | تتبّع التغييرات: `isClean` (لا تختلف أي خاصية عن أصلها)، و`wasChanged` و`getChanges` (ما غيّره آخر حفظ)، و`getPrevious` (القيم التي استبدلها). | `post.wasChanged("title")` |
+| `syncOriginal` `syncOriginalAttribute` `syncOriginalAttributes` `syncChanges` `discardChanges` `setRawAttributes` | `Model` | تعيد ضبط خط الأساس للتغييرات: تجعل القيم الحالية هي الأصلية (كلها أو واحدة أو عدة)، وتسجّل تغييرات آخر حفظ (`syncChanges`)، وتعيد كل خاصية إلى أصلها (`discardChanges`)، أو تستبدل كل الخصائص خامًا (`setRawAttributes`). | `post.discardChanges()` |
+| `preventSilentlyDiscardingAttributes` | `Model` | تحدد، لكل النماذج في العملية، هل ترمي `fill` استثناءً للمفاتيح التي كانت ستُسقطها بصمت. | `Model.preventSilentlyDiscardingAttributes(true)` |
+| `getFillable` `getGuarded` `isFillable` `isGuarded` `isUnguarded` `totallyGuarded` | `Model` | إعدادات الإسناد الجماعي: مفاتيح fillable وguarded، وهل يمكن إسناد مفتاح، وهل الحماية معطّلة في هذا الـ thread، وهل يمنع النموذج الإسناد الجماعي كليًا. | `post.isFillable("title")` |
+| `getHidden` `getVisible` `setHidden` `setVisible` `makeHidden` `makeVisible` `getAppends` `setAppends` `append` `withoutAppends` | `Model` | قوائم التسلسل: تقرأ أو تستبدل الخصائص المخفية والظاهرة والمضافة (المحسوبة)، وتضيف إليها (`makeHidden` و`append`)، أو تُظهر المخفية (`makeVisible`)، أو تزيل كل المضافة (`withoutAppends`). | `post.makeHidden("secret")` |
+| `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | إعدادات النموذج كما يحسمها: الجدول، واسم المفتاح الأساسي ونوعه، وهل تولّد قاعدة البيانات المفتاح، والمفتاح مسبوقًا باسم الجدول (`users.id`)، وعمود مسبوق باسم الجدول، واسم المفتاح الأجنبي الذي تستخدمه الجداول الأخرى لهذا النموذج، وحجم الصفحة الافتراضي، ونوع المعرّف الفريد. | `post.getQualifiedKeyName()` |
+| `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | الوصول للاتصال: اتصال النموذج واسمه، وربط النموذج بـ query factory (`setConnection`)، والـ factory الذي يستخدمه، وbuilder أساسي جديد على جدول النموذج. | `post.newBaseQuery().where("id", 1)` |
+| `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | إعدادات الوقت وJSON: الـ codec خلف casts الـ JSON وصيغة JSON، ونمط الطوابع النصية، وطريقة كتابة الطوابع، والساعة التي يقرأ منها النموذج الطوابع. | `post.setClock(clock)` |
+| `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | أعمدة الطوابع: أسماء أعمدة created-at وupdated-at وdeleted-at (الأخير أيضًا مسبوقًا بالجدول)، وهل يكتب النموذج الطوابع الآن. | `post.usesTimestamps()` |
+| `freshTimestamp` `freshTimestampValue` `fromDateTime` `updateTimestamps` | `Model` | دوال مساعدة للطوابع: اللحظة الحالية من ساعة النموذج بالصيغة التي يخزّنها، وتحويل لحظة إلى هذه الصيغة، وضبط `updated_at` (و`created_at` للنموذج الجديد) ما لم يكونا معدّلين. | `post.updateTimestamps()` |
+| `withoutTimestamps` `withoutTouchingOn` `touch` `touchQuietly` `touchOwners` | `Model` | التحديث بالـ touch: `touch` تحدّث الطوابع وتحفظ، و`touchQuietly` تفعل ذلك بإسكات المستمعين، و`touchOwners` تضبط `updated_at` على العلاقات المذكورة في `touches()`، و`withoutTimestamps` و`withoutTouchingOn` تشغّلان callback بإيقاف الطوابع أو touch المالكين في هذا الـ thread. | `post.touch()` |
+| `decrement` | `Model`, `EloquentBuilder` | تطرح مقدارًا (1 افتراضيًا) من عمود في صف هذا النموذج، مثل `increment` للإضافة؛ وتعيد عدد الصفوف المتأثرة. | `post.decrement("stock")` |
+| `is` `isNot` | `Model` | تخبران هل نموذج آخر هو نفس الصف (نفس المفتاح والجدول واسم الاتصال)، أو لا. | `a.is(b)` |
+| `fresh` | `Model`, `ModelCollection` | تعيد نسخة جديدة محمّلة من قاعدة البيانات بحسب المفتاح كما قُرئ آخر مرة (وللـ collection تعيد القائمة المحدّثة). | `post.fresh()` |
+| `newInstance` `withoutRelations` `replicate` `replicateQuietly` | `Model` | نسخ: `newInstance` تنشئ نسخة فارغة بنفس الاتصال والساعة، و`withoutRelations` تنسخ النموذج بلا علاقات محمّلة، و`replicate` تنشئ نسخة غير محفوظة بلا المفتاح والطوابع، و`replicateQuietly` تنسخ مع إسكات المستمعين المسجّلين. | `post.replicate()` |
+| `forceDeleteQuietly` `restoreQuietly` `updateQuietly` | `Model` | حذف نهائي أو استرجاع أو تحديث لنموذج مع إسكات المستمعين المسجّلين. | `post.updateQuietly(Map.of("title", "x"))` |
+| `isForceDeleting` `isSoftDeletable` `wasRecentlyCreated` | `Model` | فحوص حالة: هل يجري `forceDelete()` الآن، وهل يستخدم النموذج الحذف الناعم، وهل أدرج آخر حفظ الصف. | `post.wasRecentlyCreated()` |
+| `getMorphClass` | `Model` | تعيد الاسم المخزَّن في عمود نوع morph لهذا النموذج. | `post.getMorphClass()` |
+| `relation` `getRelation` `getRelationValue` `getRelations` `relationLoaded` `setRelation` `setRelations` `unsetRelation` | `Model` | حالة العلاقات: بناء علاقة بالاسم (`relation`)، وقراءة علاقة محمّلة دون تحميل (`getRelation`)، وقراءتها أو تحميلها كسولًا (`getRelationValue`)، وقراءة كل العلاقات المحمّلة، وفحص هل علاقة محمّلة، وضبط العلاقات المحمّلة أو استبدالها أو نسيانها. | `post.relationLoaded("user")` |
+| `loadAggregate` `loadAvg` `loadMax` `loadMin` `loadSum` `loadMorph` `loadMorphCount` | `Model`, `ModelCollection` | تحمّل تجميعات لعمود مرتبط على النموذج (`loadSum` و`loadAvg` و`loadMax` و`loadMin` و`loadAggregate`)، وتحمّل علاقات أو أعدادًا على المالك الذي حمّلته علاقة morph-to، بحسب صنف المالك (`loadMorph` و`loadMorphCount`). وهي موجودة أيضًا على `ModelCollection`. | `post.loadSum("comments", "votes")` |
+| `count` | `EloquentBuilder` | تعدّ الصفوف المطابقة (وصيغ التجميع `sum` و`avg` و`min` و`max` تعمل بالطريقة نفسها). | `Post.query().where("published", true).count()` |
+| `all` | `ModelQuery` | تعيد كل نماذج الجدول. | `Post.query().all()` |
+| `destroy` `forceDestroy` | `ModelQuery` | تحمّل النماذج بالمفاتيح المعطاة وتحذف كلًا منها فتعمل hooks كل نموذج (و`forceDestroy` تشمل المحذوفة ناعمًا وتحذفها نهائيًا). | `Post.query().destroy(1, 2)` |
+| `forceCreate` | `EloquentBuilder`, `ModelQuery` | تملأ نموذجًا جديدًا من map متجاهلةً الحماية، وتحفظه. | `Post.query().forceCreate(attrs)` |
+| `createOrFirst` | `EloquentBuilder` | تنشئ نموذجًا؛ وإن رفضه فهرس unique تعيد النموذج الموجود المطابق. | `Post.query().createOrFirst(attrs)` |
+| `findMany` `findOr` `findOrNew` `firstOr` `firstOrFail` `firstWhere` `sole` | `EloquentBuilder`, `ModelQuery` | دوال بحث إضافية: `findMany` (عدة مفاتيح، ولا استعلام للقائمة الفارغة)، و`findOr`/`firstOr` (نتيجة callback إن لم يوجد)، و`findOrNew` (نموذج جديد غير محفوظ)، و`firstOrFail`، و`firstWhere` (عمود يساوي قيمة)، و`sole` (النتيجة الوحيدة، بقراءة صفين على الأكثر). | `Post.query().firstWhere("slug", s)` |
+| `each` `lazyById` | `EloquentBuilder` | قراءة بالجملة: `each` تمرّر كل نموذج إلى predicate (حتى يعيد false)؛ و`lazyById` تعيد النماذج كتسلسل كسول يُقرأ على دفعات بالمفتاح الأساسي. | انظر «الـ chunks والقراءة الكسولة والـ cursors والصفحات» |
+| `hydrate` | `EloquentBuilder`, `ModelQuery` | تبني نماذج من صفوف خام دون تنفيذ استعلام. | `Post.query().hydrate(rows)` |
+| `getModel` `getModelClass` `newModel` | `EloquentBuilder`, `ModelQuery` | النموذج الذي يُبنى عليه الاستعلام: نسخة منه (`getModel`)، أو صنفه (`getModelClass`)، أو نموذج جديد فارغ مرتبط باتصال المدخل وساعته (`newModel`). | `Post.query().newModel()` |
+| `using` `withClock` | `ModelQuery` | تعيدان مدخلًا تجد نماذجه الـ factory باسم الاتصال في resolver (`using`)، أو تقرأ الطوابع من ساعة معطاة (`withClock`). | `Post.query().withClock(clock)` |
+| `preventsLazyLoading` | `ModelQuery` | تعيد هل التحميل الكسول ممنوع، كما ضبطته `preventLazyLoading(boolean)`. | `Post.query().preventsLazyLoading()` |
+| `addGlobalScopes` `clearGlobalScopes` `getGlobalScope` `getGlobalScopes` `hasGlobalScope` `removeGlobalScope` `withGlobalScope` `withoutGlobalScopesExcept` `removedScopes` `scopes` | `ModelQuery`, `EloquentBuilder` | سجل الـ scopes: إضافة عدة global scopes دفعة واحدة، ومسحها أو جلبها أو سردها أو فحصها أو إزالتها بالاسم، وإضافة واحد إلى استعلام واحد، وإسقاط كل scope ما عدا المسمّاة، وسرد الأسماء المُزالة، وتطبيق عدة local scopes بالترتيب (`scopes`). | `Post.query().withoutGlobalScopesExcept("tenant")` |
+| `withoutTrashed` | `EloquentBuilder` | تستبعد الصفوف المحذوفة ناعمًا، حتى بعد `withTrashed()`. | `Post.query().withoutTrashed()` |
+| `withOnly` `without` `getEagerLoads` | `EloquentBuilder` | التحميل المسبق: `withOnly` تستبدل كل تحميل مسبق، و`without` تزيل التحميلات بالمسار الدقيق (`without("posts")` تُبقي `posts.comments`)، و`getEagerLoads` تعيد المجموعة الحالية. | `Post.query().withOnly("user")` |
+| `toBase` `getBindings` `toSql` `lock` `lockForUpdate` `sharedLock` | `EloquentBuilder` | الوصول لطبقة SQL: نسخة من الـ builder المغلَّف مع تطبيق الـ global scopes (`toBase`)، وقيم select المربوطة والـ SQL (`getBindings` و`toSql`)، وأقفال الصفوف (`lock` و`lockForUpdate` و`sharedLock`). | `Post.query().lockForUpdate()` |
+| `forPage` `skip` `take` `reorder` `inRandomOrder` `oldest` `orderByDesc` `orderByRaw` `pluck` `value` `selectRaw` `leftJoin` | `EloquentBuilder` | دوال الـ query builder التي يمرّرها `EloquentBuilder` بنفس المعنى: الصفحات (`forPage` و`skip` و`take`)، والترتيب (`reorder` و`inRandomOrder` و`oldest` و`orderByDesc` و`orderByRaw`)، والقراءة (`pluck` و`value`)، و`selectRaw` و`leftJoin`. | انظر [Query builder](query-builder.md) |
+| `whereKey` `whereKeyNot` | `EloquentBuilder` | تقيّد المفتاح الأساسي مسبوقًا بالجدول: `users.id = ?`، أو `in` لمجموعة (و`whereKeyNot` تستبعد). | `Post.query().whereKey(ids)` |
+| `whereGroup` `orWhereGroup` | `EloquentBuilder` | تضيف مجموعة شروط بين أقواس تُبنى على Eloquent builder لنفس النموذج (`orWhereGroup` تربطها بـ OR)، مثل `where(Closure)` في Laravel. | `q.whereGroup(g -> g.where("a", 1).orWhere("b", 2))` |
+| `whereInstantBetween` | `EloquentBuilder` | تضيف شرطًا للحظات في مدى نصف مفتوح. | `q.whereInstantBetween("created_at", from, to)` |
+| `whereBetween` `whereNotBetween` `orWhereBetween` `whereColumn` `orWhereColumn` `whereDate` `whereDay` `whereMonth` `whereYear` `whereTime` `whereExists` `whereNotExists` `whereIn` `whereNotIn` `orWhereIn` `orWhereNotIn` `whereLike` `whereNotLike` `orWhereLike` `whereNot` `orWhereNot` `whereNull` `orWhereNull` `whereNotNull` `orWhereNotNull` `whereRaw` `orWhereRaw` | `EloquentBuilder` | عائلة `where` من الـ query builder، متاحة أيضًا على `EloquentBuilder` بنفس المعنى (صيغ `or...` تربط بـ OR). | انظر [Query builder](query-builder.md) |
+| `whereDoesntHave` `orWhereDoesntHave` `orDoesntHave` `orHas` `orWhereHas` `orWhereRelation` | `EloquentBuilder` | شروط وجود العلاقة مع `OR` والنفي: لا نموذج مرتبط يطابق قيدًا (`whereDoesntHave`)، وصيغ `or`، وشرط or على عمود نموذج مرتبط (`orWhereRelation`). | `Post.query().whereDoesntHave("comments")` |
+| `whereDoesntHaveMorph` `doesntHaveMorph` `orDoesntHaveMorph` `orHasMorph` `orWhereDoesntHaveMorph` `orWhereHasMorph` `whereMorphRelation` `whereMorphDoesntHaveRelation` `orWhereMorphRelation` `orWhereMorphDoesntHaveRelation` `whereNotMorphedTo` `orWhereMorphedTo` `orWhereNotMorphedTo` | `EloquentBuilder` | استعلامات وجود morph-to: مالك من أحد الأنواع المعطاة (أو بلا مالك)، بقيد أو بمقارنة عمود، وهل تشير morph-to إلى هدف. صيغ `or` تربط بـ OR. | `q.orHasMorph("imageable", Post.class)` |
+| `contains` `modelKeys` `size` | `ModelCollection` | أساسيات الـ collection: هل تحوي القائمة نموذجًا (نفس الصف، أو نموذجًا بمفتاح أساسي)، والمفاتيح الأساسية بترتيب القائمة، وعدد النماذج. | `posts.modelKeys()` |
+| `hasMorePages` | `ModelPage`, `SimpleModelPage` | تعيد هل تليها صفحة. | `page.hasMorePages()` |
+| `currentPage` `lastPage` | `ModelPage`, `SimpleModelPage` | أرقام الصفحات في كائن الصفحة: الصفحة الحالية بدءًا من 1، والصفحة الأخيرة. | `page.lastPage()` |
+| `nextCursor` `previousCursor` | `CursorModelPage` | تعيدان cursor الصفحة التالية أو السابقة. | `page.nextCursor()` |

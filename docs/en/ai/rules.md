@@ -12,7 +12,7 @@ These are the rules in `ai/AGENTS.md`, each with its reason and the page that ex
 | Pass values as bindings, with `whereRaw(sql, bindings)` and `selectRaw(sql, bindings)`. | Bindings keep data out of the SQL text. | [Query builder](../query-builder.md) |
 | Declare `checksum()` on each migration and give it a fixed `name()`. | Without it an edit to a migration that ran goes unnoticed. A name from the class name changes under R8. | [Migrations](../migrations.md) |
 | Declare models as `public static final ModelQuery<T> query`. | It is the one entry per model. No reflection, so it works on Android. | [Models](../models.md) |
-| Use `tx` inside `db.transaction(tx -> ...)`. | A call on the root connection would run outside the rollback. | [Connections](../connections.md) |
+| Use `tx` inside `db.transaction(tx -> ...)`. | A call on the root connection would run outside the rollback. For the query factory or schema, call `db.on(tx)`. | [Connections](../connections.md) |
 | On Android, name tables and relation keys explicitly, or keep model names. | R8 can rename classes, and defaults come from class names. | [Android](../android.md) |
 | Keep an Android transaction and cursor on one thread. | Android ties them to the thread that opened them. Diwan refuses a commit from another thread. | [Android](../android.md) |
 

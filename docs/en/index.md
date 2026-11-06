@@ -4,6 +4,18 @@ Diwan Database is a Java port of Laravel's database layer (`illuminate/database`
 
 You write SQL, query builder calls, migrations and models. The library sends them to SQLite or PostgreSQL, on a server, on the desktop or on Android.
 
+## A first look
+
+Your code asks a `DatabaseManager` for what it needs. The driver is a configuration value, so moving from SQLite to PostgreSQL changes configuration, not code.
+
+```java
+QueryFactory db = manager.query();      // from the connection's configuration, no driver class in your code
+db.table("users").insert(Map.of("email", "ada@example.com"));
+List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).get();
+```
+
+[Getting started](getting-started.md) builds the manager.
+
 ## Modules
 
 | Module | Coordinates | What it gives you |
@@ -22,6 +34,10 @@ You write SQL, query builder calls, migrations and models. The library sends the
 - Databases: SQLite and PostgreSQL. MySQL and SQL Server are not supported.
 
 Version 0.1.0 is not published yet. Build it locally with `./gradlew check` until it is.
+
+## Security
+
+Report a vulnerability privately, through [GitHub private vulnerability reporting](https://github.com/aristonis/diwan-database/security/advisories/new). Never open a public issue for it.
 
 ## Where to go next
 

@@ -12,7 +12,7 @@
 | مرّر القيم كـ bindings (معاملات مربوطة) عبر `whereRaw(sql, bindings)` و`selectRaw(sql, bindings)`. | تبقي الـ bindings البيانات خارج نص SQL. | [باني الاستعلامات](../query-builder.md) |
 | صرّح بـ `checksum()` في كل migration وأعطه `name()` ثابتًا. | بدونه يمرّ تعديل migration نُفّذ دون أن يلاحظه أحد. والاسم المأخوذ من اسم الصنف يتغيّر تحت R8. | [التهجيرات](../migrations.md) |
 | عرّف النماذج بـ `public static final ModelQuery<T> query`. | هي نقطة الدخول الوحيدة لكل نموذج، بلا reflection (انعكاس)، فتعمل على Android. | [النماذج](../models.md) |
-| استعمل `tx` داخل `db.transaction(tx -> ...)`. | أي استدعاء على الاتصال الجذر سيجري خارج التراجع. | [الاتصالات](../connections.md) |
+| استعمل `tx` داخل `db.transaction(tx -> ...)`. | أي استدعاء على الاتصال الجذر سيجري خارج التراجع. وللـ query factory أو الـ schema استدعِ `db.on(tx)`. | [الاتصالات](../connections.md) |
 | على Android سمِّ الجداول ومفاتيح العلاقات صراحةً، أو أبقِ أسماء النماذج. | R8 قد يعيد تسمية الأصناف، والقيم الافتراضية تُشتق من أسماء الأصناف. | [Android](../android.md) |
 | أبقِ transaction والـ cursor في Android على thread (خيط تنفيذ) واحد. | Android يربطهما بالـ thread الذي فتحهما، وDiwan ترفض الـ commit من thread آخر. | [Android](../android.md) |
 

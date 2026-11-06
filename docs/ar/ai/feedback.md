@@ -9,6 +9,7 @@
 | هذا الموقع: مثال خاطئ، صفحة ناقصة، جملة غامضة، ترجمة سيئة | GitHub Discussions أو Issues في `aristonis/diwan-database-docs` |
 | مهارة أو قواعد `AGENTS.md`: قاعدة أعطت الـ agent كودًا خاطئًا، أو مزلق ناقص | GitHub Issues في `aristonis/diwan-database` |
 | خلل في المكتبة | [الإبلاغ عن مشكلة](report-issue.md) |
+| مشكلة أمنية في المكتبة أو مهارة أو هذا الموقع | بسرية على https://github.com/aristonis/diwan-database/security/advisories/new. لا تفتح issue عامة أبدًا. |
 
 تُفتح المستودعات للعامة مع الإصدار الأول. إلى ذلك الحين أرسل ملاحظاتك إلى المشرفين مباشرة.
 

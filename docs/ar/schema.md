@@ -3,11 +3,10 @@
 الـ `Schema` تنشئ الجداول وتغيّرها. تصف الجدول داخل callback (دالة يستدعيها النظام) على `Blueprint` (مخطط الجدول)، ثم تحوله الـ grammar (قواعد توليد SQL الخاصة بكل قاعدة بيانات) الخاصة بقاعدة بياناتك إلى SQL.
 
 ```java
-import org.aristonis.diwan.database.schema.Schema;
-import org.aristonis.diwan.database.sqlite.SQLiteSchema;     // PostgresSchema.of(db) on PostgreSQL
-
-Schema schema = SQLiteSchema.of(db);
+Schema schema = manager.schema();      // the default connection; manager.schema("cache") for another
 ```
+
+المتغير `manager` هو الـ `DatabaseManager` من صفحة [الاتصالات والمعاملات](connections.md). تُبنى الـ `Schema` من إعداد الاتصال، فلا يذكر كودك أي صنف driver. بدون manager استعمل وحدة الـ grammar: `SQLiteSchema.of(connection)`، أو `PostgresSchema.of(connection)` مع PostgreSQL.
 
 ## الإنشاء والتعديل والحذف
 
@@ -133,4 +132,30 @@ List<LoggedQuery> plan = schema.pretend(s -> s.create("t", table -> table.id()))
 
 `pretend` تسرد الجمل ولا تغير شيئًا. هي تقرأ الجداول الحية، فتعرض إعادة البناء بجملها الحقيقية، لكن الجدول الذي أُنشئ قبلها في نفس تشغيل pretend (وضع المعاينة دون تنفيذ) لا يكون موجودًا بالنسبة لها. و`hasTable` و`hasColumn` تعيدان `false` في وضع pretend.
 
+داخل transaction (معاملة) استدعِ `schema.on(tx)` حتى يعمل العمل على المعاملة: `schema.on(tx).create(...)`.
+
 التالي: [Migrations](migrations.md).
+
+## مرجع الدوال
+
+الدوال العامة التي لا تغطيها الأقسام السابقة، بصف واحد لكل اسم دالة (الـ overloads في صف واحد).
+
+| الدالة | على | ماذا تفعل | مثال |
+|---|---|---|---|
+| `connection` `grammar` | `Schema` | على `Schema`: الاتصال الذي يعمل عليه والـ grammar الذي يبني الـ SQL. | `schema.connection()` |
+| `commands` `isCreating` | `Blueprint` | على `Blueprint`: الأوامر بالترتيب الذي يبنيه الـ grammar، وهل ينشئ الـ blueprint جدوله. | `table.isCreating()` |
+| `tinyIncrements` `smallIncrements` `mediumIncrements` `integerIncrements` | `Blueprint` | مفاتيح أساسية صحيحة موجبة ذاتية الزيادة بحجم 8 و16 و24 و32 بت. | `table.smallIncrements("id")` |
+| `unsignedTinyInteger` `unsignedSmallInteger` `unsignedMediumInteger` `unsignedInteger` `unsignedBigInteger` | `Blueprint` | أعمدة أعداد صحيحة موجبة بحجم 8 و16 و24 و32 و64 بت. | `table.unsignedInteger("views")` |
+| `tinyText` | `Blueprint` | تضيف عمود نص قصير. | `table.tinyText("note")` |
+| `timeTz` `timestampTz` `dateTimeTz` | `Blueprint` | أعمدة وقت من اليوم وطابع زمني وتاريخ ووقت مع المنطقة الزمنية. | `table.timestampTz("seen_at")` |
+| `nullableTimestamps` `datetimes` `timestampsTz` | `Blueprint` | عمودا `created_at` و`updated_at` القابلان لـ null: مثل `timestamps()` (`nullableTimestamps`)، أو كأعمدة تاريخ ووقت (`datetimes`)، أو مع المنطقة الزمنية (`timestampsTz`). | `table.timestampsTz()` |
+| `softDeletesTz` `softDeletesDatetime` | `Blueprint` | عمود `deleted_at` القابل لـ null للحذف الناعم، مع المنطقة الزمنية أو كعمود تاريخ ووقت. | `table.softDeletesTz()` |
+| `numericMorphs` `nullableNumericMorphs` `nullableMorphs` `uuidMorphs` `nullableUuidMorphs` `ulidMorphs` `nullableUlidMorphs` | `Blueprint` | أعمدة علاقة polymorphic: `_type` و`_id` بمعرّف رقمي أو UUID أو ULID وفهرس عليهما. صيغ `nullable` تسمح بـ null. | `table.nullableMorphs("taggable")` |
+| `dropColumn` `renameColumn` | `Blueprint` | حذف أعمدة، أو إعادة تسمية عمود. | `table.renameColumn("a", "b")` |
+| `dropPrimary` `dropCheck` | `Blueprint` | حذف المفتاح الأساسي، أو قيد CHECK مسمّى. | `table.dropCheck("age_check")` |
+| `dropMorphs` `dropRememberToken` `dropSoftDeletes` `dropSoftDeletesTz` `dropTimestamps` `dropTimestampsTz` | `Blueprint` | حذف ما أضافته الدالة المقابلة: علاقة polymorphic (الفهرس ثم العمودان)، أو `remember_token`، أو `deleted_at`، أو `created_at` و`updated_at`. | `table.dropTimestamps()` |
+| `type` `length` `places` `precision` `total` `allowed` `checks` `rawDefinition` | `ColumnDefinition`, `ForeignIdColumnDefinition` | قراءة تعريف عمود: نوعه، وطول النص، والخانات بعد الفاصلة والدقة أو إجمالي الخانات للعشري، والقيم التي يسمح بها enum أو set، وشروط CHECK، وSQL النوع الخام. | `column.type()` |
+| `isNullable` `isNotNullStated` `isUnsigned` `isAutoIncrement` `isPrimary` `isIndexed` `isChange` `isGenerated` `usesCurrent` | `ColumnDefinition`, `ForeignIdColumnDefinition` | قراءة علامات عمود: يسمح بـ NULL، أو استُدعيت `nullable(false)`، وهل هو unsigned، وهل يزداد تلقائيًا، وهل هو المفتاح الأساسي وحده، وهل له فهرس عادي، وهل يعيد تعريف عمود موجود (`change()`)، وهل تحسبه قاعدة البيانات، وهل استُدعيت `useCurrent()`. | `column.isNullable()` |
+| `onUpdate` `cascadeOnUpdate` `restrictOnUpdate` `noActionOnUpdate` `nullOnUpdate` `restrictOnDelete` `noActionOnDelete` | `ForeignKeyDefinition` | إجراءات المفتاح الأجنبي: `onUpdate` تحدد ما يحدث عند تغيّر المفتاح المرجعي، والاختصارات تعمل cascade أو restrict (الرفض) أو الرفض في نهاية الجملة (`noAction...`) أو ضبط NULL. | `fk.restrictOnDelete()` |
+| `deleteAction` `updateAction` `referencedTable` `referencedColumns` | `ForeignKeyDefinition` | قراءة تعريف مفتاح أجنبي: إجراء الحذف والتحديث إن ضُبط، والجدول المرجعي، والأعمدة المرجعية. | `fk.referencedTable()` |
+| `on` | `Schema` | تعيد باني الـ schema هذا مربوطًا باتصال آخر لقاعدة البيانات نفسها، مثل اتصال معاملة. وترمي `IllegalArgumentException` مع نوع آخر من قواعد البيانات. | `schema.on(tx)` |

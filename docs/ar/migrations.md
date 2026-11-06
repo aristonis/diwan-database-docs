@@ -35,10 +35,12 @@ final class CreateUsersTable extends Migration {
 
 ## التشغيل والتراجع
 
+تعيد `manager.migrator(name)` كائن `Migrator.Builder` لذلك الاتصال، مبنيًا من إعداده. بدون manager استعمل `Migrator.builder(SQLiteSchema.of(connection))` أو ما يقابله في `PostgresSchema`.
+
 ```java
 import org.aristonis.diwan.database.migrations.Migrator;
 
-Migrator migrator = Migrator.builder(SQLiteSchema.of(db))
+Migrator migrator = manager.migrator("main")
         .add(new CreateUsersTable())
         .add(new AddBioToUsers())
         .build();
@@ -87,7 +89,7 @@ Migrator migrator = Migrator.builder(mainSchema)
 الـ `MigrationListener` يراقب عمل الـ migrator. كل دالة فيه اختيارية.
 
 ```java
-Migrator migrator = Migrator.builder(SQLiteSchema.of(db))
+Migrator migrator = manager.migrator("main")
         .add(new CreateUsersTable())
         .listener(new MigrationListener() {
             @Override
@@ -119,7 +121,15 @@ Migrator migrator = Migrator.builder(SQLiteSchema.of(db))
 لا شيء يمنع عمليتين من التهجير معًا ما لم تضف قفلًا. لدى PostgreSQL قفل مبني على advisory lock (قفل استشاري في PostgreSQL).
 
 ```java
-Migrator migrator = Migrator.builder(PostgresSchema.of(db))
+Migrator migrator = manager.migrator("main")     // carries the PostgreSQL lock by itself
+        .add(new CreateUsersTable())
+        .build();
+```
+
+بدون manager ابنِ الـ migrator على وحدة الـ grammar ومرّر القفل بنفسك:
+
+```java
+Migrator migrator = Migrator.builder(PostgresSchema.of(connection))
         .lock(new PostgresMigrationLock(dataSource))     // waits up to 60 seconds by default
         .add(new CreateUsersTable())
         .build();
@@ -145,8 +155,6 @@ public Optional<String> checksum() {
 - الـ migration التي لا تعلن شيئًا لا تُفحص أبدًا. والتي تبدأ بإعلان checksum يُسجل لها في التشغيل التالي.
 - لقبول تعديل مقصود استدعِ `migrator.repairChecksums(migrator.migrations())`. ولمسح كل checksum مسجل استدعِ `migrator.clearChecksums()`. كلتاهما تأخذ قفل الـ migration ولا تطلق أحداثًا.
 
-جدول migrations الذي أُنشئ قبل وجود عمود checksum لا يملكه، ولا يعدّل Diwan الجداول وقت التشغيل. أول استدعاء يحتاج العمود يرمي `IllegalStateException` تتضمن الجملة الوحيدة المطلوب تنفيذها: `alter table migrations add column checksum varchar(64)`. هذا ينطبق فقط على قواعد أُنشئت ببناء تجريبي سابق للإصدار.
-
 ## الـ Seeders
 
 الـ seeder (مُغذّي بيانات البداية) يملأ الجداول ببيانات البداية. ورّث `Seeder` واستخدم `SeedContext`.
@@ -167,3 +175,11 @@ manager.seed(DatabaseSeeder::new, SeedOptions.defaults().inTransaction(true));
 تستطيع `SeedOptions` اختيار اتصال مسمى، ولف التشغيل كله في transaction واحدة، وإضافة `SeederListener`. والـ seeder الذي يستدعي نفسه، مباشرة أو عبر غيره، يرمي `IllegalStateException` تذكر السلسلة.
 
 التالي: [Models](models.md)، [الأخطاء والاستثناءات](errors.md).
+
+## مرجع الدوال
+
+الدوال العامة التي لا تغطيها الأقسام السابقة، بصف واحد لكل اسم دالة (الـ overloads في صف واحد).
+
+| الدالة | على | ماذا تفعل | مثال |
+|---|---|---|---|
+| `repository` | `Migrator` | تعيد repository جدول الـ migrations على الاتصال الافتراضي. | `migrator.repository()` |

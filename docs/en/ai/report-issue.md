@@ -2,6 +2,10 @@
 
 File a library bug at https://github.com/aristonis/diwan-database/issues. The repository URL works once the project is public.
 
+## Security problems
+
+A security problem is not filed as a public issue. Report it privately at https://github.com/aristonis/diwan-database/security/advisories/new (GitHub private vulnerability reporting), with the same details as below. Never use `gh issue create` for it, and an agent must not either.
+
 ## Before you file
 
 1. Check the guide for the feature. Some behavior is listed on [Differences from Laravel](../differences.md) or [Errors and exceptions](../errors.md).

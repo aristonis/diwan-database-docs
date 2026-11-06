@@ -45,27 +45,11 @@ Maven:
 
 ## افتح اتصالًا
 
-أقصر طريق هو `Connection` مبني فوق أي `javax.sql.DataSource`:
+صِف قاعدة البيانات في الإعداد ودع `DatabaseManager` يبني الاتصال عند أول استعمال. لا يذكر كودك أي صنف driver، فالانتقال إلى PostgreSQL لاحقًا تغيير في الإعداد فقط (`driver` يصبح `pgsql` مع host)، ويبقى الكود أدناه كما هو.
 
 ```java
-import org.aristonis.diwan.database.Connection;
-import org.aristonis.diwan.database.jdbc.DriverManagerDataSource;
+import org.aristonis.diwan.database.manager.DatabaseManager;
 
-Connection db = Connection.builder()
-        .name("main")
-        .dataSource(new DriverManagerDataSource("jdbc:sqlite:app.db", null, null))
-        .build();
-
-db.statement("create table notes (id integer primary key, body text not null)");
-db.insert("insert into notes (body) values (?)", "hello");
-List<Map<String, Object>> rows = db.select("select id, body from notes");
-```
-
-القيم تُربط (bound) دائمًا ولا تُلصق في نص SQL أبدًا. وتعود الصفوف خرائط (maps) للقراءة فقط بأعمدة بترتيب الـ select.
-
-إذا كان لتطبيقك أكثر من قاعدة بيانات، أو إعداداته في ملف أو في البيئة، استعمل `DatabaseManager`. يبني كل اتصال مُسمّى عند أول استعمال:
-
-```java
 DatabaseConfig config = DatabaseConfig.from(MapConfigSource.of(Map.of(
         "database.default", "main",
         "database.connections.main.driver", "sqlite",
@@ -76,12 +60,33 @@ DatabaseManager manager = DatabaseManager.builder()
         .connector(new SQLiteConnector())
         .build();
 
-Connection main = manager.connection();
-QueryFactory query = manager.query();
+QueryFactory db = manager.query();      // the default connection
 Schema schema = manager.schema();
 ```
 
-الطريقتان مشروحتان في [الاتصالات والمعاملات](connections.md). وبقية هذه الصفحة تستعمل `db` من الطريقة الأولى.
+شغّل SQL الخام عبر الاتصال، والقيم تُربط (bound) ولا تُلصق في نص SQL أبدًا:
+
+```java
+Connection conn = manager.connection();
+conn.statement("create table notes (id integer primary key, body text not null)");
+conn.insert("insert into notes (body) values (?)", "hello");
+List<Map<String, Object>> rows = conn.select("select id, body from notes");
+```
+
+تعود الصفوف خرائط (maps) للقراءة فقط بأعمدة بترتيب الـ select. وبقية هذه الصفحة تستعمل `manager` و`db` من أعلاه. مفاتيح الإعداد وتعدد الاتصالات المُسمّاة والـ pool في [الاتصالات والمعاملات](connections.md).
+
+### بدون manager
+
+في سكربت أو اختبار يمكنك بناء `Connection` فوق أي `javax.sql.DataSource` وأخذ الـ factories من وحدة الـ grammar:
+
+```java
+Connection conn = Connection.builder()
+        .name("main")
+        .dataSource(new DriverManagerDataSource("jdbc:sqlite:app.db", null, null))
+        .build();
+QueryFactory db = SQLiteQuery.of(conn);        // PostgresQuery.of(conn) on PostgreSQL
+Schema schema = SQLiteSchema.of(conn);
+```
 
 ## اكتب migration
 
@@ -117,7 +122,7 @@ final class CreateUsersTable extends Migration {
 شغّله بواسطة `Migrator`:
 
 ```java
-Migrator migrator = Migrator.builder(SQLiteSchema.of(db))
+Migrator migrator = manager.migrator("main")
         .add(new CreateUsersTable())
         .build();
 
@@ -130,19 +135,17 @@ migrator.rollback();   // undoes the last batch
 ## شغّل استعلامًا
 
 ```java
-QueryFactory query = SQLiteQuery.of(db);
-
-Object id = query.table("users").insertGetId(Map.of(
+Object id = db.table("users").insertGetId(Map.of(
         "name", "Ada", "email", "ada@example.com"));
 
-List<Map<String, Object>> found = query.table("users")
+List<Map<String, Object>> found = db.table("users")
         .where("email", "like", "%@example.com")
         .orderByDesc("id")
         .limit(10)
         .get();
 
-long total = query.table("users").count();
-query.table("users").where("id", id).update(Map.of("name", "Ada L."));
+long total = db.table("users").count();
+db.table("users").where("id", id).update(Map.of("name", "Ada L."));
 ```
 
 المزيد في [Query builder](query-builder.md).
@@ -168,7 +171,7 @@ public final class User extends Model {
 اسم الجدول `users`، أي صيغة الجمع بحروف snake-case لاسم الصنف. اربط نقطة الدخول بـ query factory مرة واحدة ثم استعملها:
 
 ```java
-ModelQuery<User> users = User.query.on(SQLiteQuery.of(db));
+ModelQuery<User> users = User.query.on(db);
 
 User ada = users.create(Map.of("name", "Ada", "email", "ada@example.com"));
 User again = users.findOrFail(ada.getKey());

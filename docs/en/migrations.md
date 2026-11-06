@@ -41,10 +41,12 @@ Three optional overrides: `withinTransaction()` to opt out of the wrapping trans
 
 ## Run and undo
 
+`manager.migrator(name)` returns a `Migrator.Builder` for that connection, built from its configuration. Without a manager, use `Migrator.builder(SQLiteSchema.of(connection))` or the `PostgresSchema` equivalent.
+
 ```java
 import org.aristonis.diwan.database.migrations.Migrator;
 
-Migrator migrator = Migrator.builder(SQLiteSchema.of(db))
+Migrator migrator = manager.migrator("main")
         .add(new CreateUsersTable())
         .add(new AddBioToUsers())
         .build();
@@ -101,7 +103,7 @@ Migrator migrator = Migrator.builder(mainSchema)
 A `MigrationListener` watches a migrator work. Every method is optional.
 
 ```java
-Migrator migrator = Migrator.builder(SQLiteSchema.of(db))
+Migrator migrator = manager.migrator("main")
         .add(new CreateUsersTable())
         .listener(new MigrationListener() {
             @Override
@@ -140,7 +142,15 @@ Nothing stops two processes from migrating at once unless you plug in a lock. Po
 built on an advisory lock.
 
 ```java
-Migrator migrator = Migrator.builder(PostgresSchema.of(db))
+Migrator migrator = manager.migrator("main")     // carries the PostgreSQL lock by itself
+        .add(new CreateUsersTable())
+        .build();
+```
+
+Without a manager, build the migrator on the grammar module and pass the lock yourself:
+
+```java
+Migrator migrator = Migrator.builder(PostgresSchema.of(connection))
         .lock(new PostgresMigrationLock(dataSource))     // waits up to 60 seconds by default
         .add(new CreateUsersTable())
         .build();
@@ -174,11 +184,6 @@ hashes compiled code, because that changes between compilers and shrinkers.
   recorded checksum, call `migrator.clearChecksums()`. Both take the migration lock and fire no
   events.
 
-A migrations table created before the checksum column existed does not have it, and Diwan does not
-alter tables at run time. The first call that needs the column throws `IllegalStateException` with
-the one statement to run: `alter table migrations add column checksum varchar(64)`. This applies to
-databases created by a pre-release build only.
-
 ## Seeders
 
 A seeder fills tables with starting data. Extend `Seeder` and use the `SeedContext`.
@@ -201,3 +206,11 @@ manager.seed(DatabaseSeeder::new, SeedOptions.defaults().inTransaction(true));
 `IllegalStateException` that names the chain.
 
 Next: [Models](models.md), [Errors and exceptions](errors.md).
+
+## Method reference
+
+Public methods that the sections above do not cover, one row per method name (overloads share a row).
+
+| Method | On | What it does | Example |
+|---|---|---|---|
+| `repository` | `Migrator` | Returns the repository of the migrations table on the default connection. | `migrator.repository()` |

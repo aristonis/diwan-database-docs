@@ -9,6 +9,7 @@ Docs and skills are written by hand and checked against the source, and they can
 | This site: a wrong example, a missing page, a confusing sentence, a bad translation | GitHub Discussions or Issues on `aristonis/diwan-database-docs` |
 | A skill or the `AGENTS.md` rules: a rule that gave the agent wrong code, a missing pitfall | GitHub Issues on `aristonis/diwan-database` |
 | A bug in the library | [Report an issue](report-issue.md) |
+| A security problem, in the library, a skill or this site | Privately, at https://github.com/aristonis/diwan-database/security/advisories/new. Never a public issue. |
 
 Repositories open to the public with the first release. Until then, send feedback to the maintainers directly.
 

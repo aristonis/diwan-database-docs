@@ -4,11 +4,10 @@
 grammar of your database turns it into SQL.
 
 ```java
-import org.aristonis.diwan.database.schema.Schema;
-import org.aristonis.diwan.database.sqlite.SQLiteSchema;     // PostgresSchema.of(db) on PostgreSQL
-
-Schema schema = SQLiteSchema.of(db);
+Schema schema = manager.schema();      // the default connection; manager.schema("cache") for another
 ```
+
+`manager` is the `DatabaseManager` from [Connections and transactions](connections.md). The schema is built from the connection's configuration, so your code never names a driver class. Without a manager, use the grammar module: `SQLiteSchema.of(connection)`, or `PostgresSchema.of(connection)` on PostgreSQL.
 
 ## Create, alter and drop
 
@@ -155,4 +154,30 @@ List<LoggedQuery> plan = schema.pretend(s -> s.create("t", table -> table.id()))
 real statements, but a table made earlier in the same pretend run does not exist for it.
 `hasTable` and `hasColumn` return `false` in pretend mode.
 
+Inside a transaction, call `schema.on(tx)` so the work runs on the transaction: `schema.on(tx).create(...)`.
+
 Next: [Migrations](migrations.md).
+
+## Method reference
+
+Public methods that the sections above do not cover, one row per method name (overloads share a row).
+
+| Method | On | What it does | Example |
+|---|---|---|---|
+| `connection` `grammar` | `Schema` | On `Schema`: the connection it works on and the grammar that compiles its SQL. | `schema.connection()` |
+| `commands` `isCreating` | `Blueprint` | On `Blueprint`: the commands in the order a grammar compiles them, and whether the blueprint creates its table. | `table.isCreating()` |
+| `tinyIncrements` `smallIncrements` `mediumIncrements` `integerIncrements` | `Blueprint` | Auto-increment unsigned integer primary keys of 8, 16, 24 and 32 bits. | `table.smallIncrements("id")` |
+| `unsignedTinyInteger` `unsignedSmallInteger` `unsignedMediumInteger` `unsignedInteger` `unsignedBigInteger` | `Blueprint` | Unsigned integer columns of 8, 16, 24, 32 and 64 bits. | `table.unsignedInteger("views")` |
+| `tinyText` | `Blueprint` | Adds a short text column. | `table.tinyText("note")` |
+| `timeTz` `timestampTz` `dateTimeTz` | `Blueprint` | Time of day, timestamp and date and time columns with a time zone. | `table.timestampTz("seen_at")` |
+| `nullableTimestamps` `datetimes` `timestampsTz` | `Blueprint` | Nullable `created_at` and `updated_at` columns: as `timestamps()` does (`nullableTimestamps`), as date and time columns (`datetimes`) or with a time zone (`timestampsTz`). | `table.timestampsTz()` |
+| `softDeletesTz` `softDeletesDatetime` | `Blueprint` | Nullable `deleted_at` column for soft deletes, with a time zone or as a date and time column. | `table.softDeletesTz()` |
+| `numericMorphs` `nullableNumericMorphs` `nullableMorphs` `uuidMorphs` `nullableUuidMorphs` `ulidMorphs` `nullableUlidMorphs` | `Blueprint` | Polymorphic relation columns: `_type` and `_id` with a numeric, UUID or ULID id and an index on both. The `nullable` forms allow null. | `table.nullableMorphs("taggable")` |
+| `dropColumn` `renameColumn` | `Blueprint` | Drop columns, or rename one. | `table.renameColumn("a", "b")` |
+| `dropPrimary` `dropCheck` | `Blueprint` | Drop the primary key, or a named CHECK constraint. | `table.dropCheck("age_check")` |
+| `dropMorphs` `dropRememberToken` `dropSoftDeletes` `dropSoftDeletesTz` `dropTimestamps` `dropTimestampsTz` | `Blueprint` | Drop what the matching helper added: a polymorphic relation (index, then both columns), `remember_token`, `deleted_at`, or `created_at` and `updated_at`. | `table.dropTimestamps()` |
+| `type` `length` `places` `precision` `total` `allowed` `checks` `rawDefinition` | `ColumnDefinition`, `ForeignIdColumnDefinition` | Read a column definition: its type, the string length, the digits after the point and the precision or total digits of a decimal, the values an enum or set allows, its CHECK conditions and the SQL of a raw type. | `column.type()` |
+| `isNullable` `isNotNullStated` `isUnsigned` `isAutoIncrement` `isPrimary` `isIndexed` `isChange` `isGenerated` `usesCurrent` | `ColumnDefinition`, `ForeignIdColumnDefinition` | Read a column's flags: allows NULL, `nullable(false)` was called, unsigned, counts up by itself, is the primary key on its own, has a plain index of its own, redefines an existing column (`change()`), is computed by the database, and `useCurrent()` was called. | `column.isNullable()` |
+| `onUpdate` `cascadeOnUpdate` `restrictOnUpdate` `noActionOnUpdate` `nullOnUpdate` `restrictOnDelete` `noActionOnDelete` | `ForeignKeyDefinition` | Foreign key actions: `onUpdate` sets what happens when the referenced key changes, and the shortcuts cascade, restrict (refuse), refuse at the end of the statement (`noAction...`) or set NULL. | `fk.restrictOnDelete()` |
+| `deleteAction` `updateAction` `referencedTable` `referencedColumns` | `ForeignKeyDefinition` | Read a foreign key definition: the delete and update action if one was set, the referenced table and the referenced columns. | `fk.referencedTable()` |
+| `on` | `Schema` | Returns this schema builder bound to another connection of the same database, such as a transaction's. It throws `IllegalArgumentException` for another kind of database. | `schema.on(tx)` |

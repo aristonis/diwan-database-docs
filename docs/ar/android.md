@@ -26,20 +26,26 @@ public final class AppDb extends SQLiteOpenHelper {
     @Override public void onUpgrade(SQLiteDatabase db, int from, int to) { }
 }
 
-Connection db = Connection.builder()
-        .name("app")
-        .driver(AndroidSqliteDriver.of(new AppDb(context)))
+DatabaseConfig config = DatabaseConfig.builder()
+        .defaultConnection("app")
+        .connection(ConnectionConfig.builder("app").driver("android").build())
         .build();
 
-Migrator.builder(SQLiteSchema.of(db)).migrations(migrations).build().run();
-QueryFactory query = SQLiteQuery.of(db);
+DatabaseManager manager = DatabaseManager.builder()
+        .config(config)
+        .connector(AndroidConnector.of(() -> new AppDb(context), SQLiteQuery::of, SQLiteSchema::of))
+        .build();
+
+manager.migrator("app").migrations(migrations).build().run();
+QueryFactory db = manager.query();
 ```
 
 تفتح `of(SQLiteOpenHelper)` قاعدة البيانات عند أول استدعاء يحتاجها، وهذا الاستدعاء يشغّل `onCreate` أو `onUpgrade` في الـ helper.
 اجعل الاستدعاء الأول خارج الـ main thread (خيط تنفيذ). لا يغلق الـ driver قاعدة البيانات أبدًا؛ تطبيقك يملكها.
 
-لتسجيل Android في `DatabaseManager` استعمل `AndroidConnector.of(() -> helper, SQLiteQuery::of, SQLiteSchema::of)` واتصالًا بـ `driver("android")`.
-ابنِ أول اتصال خارج الـ main thread.
+تأخذ `AndroidConnector.of(...)` الـ factories الخاصة بالـ grammar مرة واحدة هنا. بعد ذلك يطلب كودك من الـ manager الدوال `query()` و`schema()` و`migrator(name)` ولا يذكر أي صنف grammar. ابنِ أول اتصال خارج الـ main thread.
+
+بدون manager ابنِ `Connection` بـ `Connection.builder().name("app").driver(AndroidSqliteDriver.of(new AppDb(context))).build()` واستعمل `SQLiteSchema.of(connection)` و`SQLiteQuery.of(connection)`.
 
 ## الـ threads
 

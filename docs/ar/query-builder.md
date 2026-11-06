@@ -4,18 +4,25 @@
 
 ## الحصول على builder
 
-لكل قاعدة بيانات نقطة دخول واحدة تعيد `QueryFactory`. استدعِ `table(...)` عليها لتبدأ استعلامًا.
+اطلب `QueryFactory` من الـ `DatabaseManager`. يُبنى من إعداد الاتصال، فلا يذكر كودك أي صنف driver، وتغيير قاعدة البيانات تغيير في الإعداد فقط. استدعِ `table(...)` عليه لتبدأ استعلامًا.
 
 ```java
 import org.aristonis.diwan.database.query.QueryFactory;
-import org.aristonis.diwan.database.sqlite.SQLiteQuery;     // diwan-database-sqlite:0.1.0
-import org.aristonis.diwan.database.pgsql.PostgresQuery;    // diwan-database-pgsql:0.1.0
 
-QueryFactory query = SQLiteQuery.of(db);        // SQLite, and Android through the same grammar
-// QueryFactory query = PostgresQuery.of(db);   // PostgreSQL
+QueryFactory query = manager.query();            // the default connection
+QueryFactory cache = manager.query("cache");     // a named connection
 ```
 
-المتغير `db` هو الـ `Connection` من صفحة [الاتصالات والمعاملات](connections.md). على Android تمرر الـ factory إلى `AndroidConnector`، راجع [Android](android.md). الـ builder غير آمن للاستخدام من عدة threads. الدالة `clone()` تعطيك نسخة مستقلة.
+المتغير `manager` هو الـ `DatabaseManager` من صفحة [الاتصالات والمعاملات](connections.md). الـ builder غير آمن للاستخدام من عدة threads. الدالة `clone()` تعطيك نسخة مستقلة. تسمّي أمثلة هذه الصفحة الـ factory باسم `query`.
+
+بدون manager، خذ الـ factory من وحدة الـ grammar الخاصة بقاعدة بياناتك:
+
+```java
+QueryFactory query = SQLiteQuery.of(connection);       // SQLite, and Android through the same grammar
+// QueryFactory query = PostgresQuery.of(connection);  // PostgreSQL
+```
+
+داخل transaction (معاملة) استدعِ `query.on(c)` حتى يعمل العمل على المعاملة، كما في مثال row locks أدناه. وعلى Android راجع [Android](android.md).
 
 ## الاختيار والتصفية
 
@@ -104,9 +111,9 @@ query.table("users").updateOrInsert(Map.of("email", "a@x"), Map.of("name", "A"))
 ## Row locks (أقفال الصفوف)
 
 ```java
-db.transaction(c -> {
-    var accounts = PostgresQuery.of(c).table("accounts").where("id", 1).lockForUpdate().get();
-    var jobs = PostgresQuery.of(c).table("jobs")
+connection.transaction(c -> {
+    var accounts = query.on(c).table("accounts").where("id", 1).lockForUpdate().get();
+    var jobs = query.on(c).table("jobs")
             .lock(LockStrength.UPDATE, LockWait.SKIP_LOCKED).limit(10).get();
     return null;
 });
@@ -193,3 +200,62 @@ query.table("orders").whereRaw("total > ? and status = ?", List.of(100, status))
 ابنِ الـ SQL الخام من ثوابت. نص الـ SQL نفسه يجب ألا يأتي من مدخلات المستخدم أبدًا.
 
 التالي: [Schema builder](schema.md)، [Models](models.md)، [الاختلافات عن Laravel](differences.md).
+
+## مرجع الدوال
+
+الدوال العامة التي لا تغطيها الأقسام السابقة، بصف واحد لكل اسم دالة (الـ overloads في صف واحد).
+
+| الدالة | على | ماذا تفعل | مثال |
+|---|---|---|---|
+| `addBinding` `addBindings` `setBindings` `getRawBindings` | `Builder` | تقرأ القيم المربوطة (bindings) حسب الـ bucket (مثل `select` و`where` و`having`) أو تغيّرها. `addBinding` و`addBindings` تضيفان، و`setBindings` تستبدل bucket كاملًا، و`getRawBindings` تعيد كل الـ buckets. | `q.addBinding("where", 5)` |
+| `addSelect` `selectSub` | `Builder` | تضيف إلى قائمة الأعمدة المختارة: استعلامًا فرعيًا بـ alias (`addSelect` و`selectSub`) أو تعبيرًا خامًا (`selectRaw`). | `q.selectSub(sub, "post_count")` |
+| `distinct` | `Builder` | تجعل الاستعلام يعيد الصفوف المختلفة فقط. | `q.distinct().select("city")` |
+| `average` `min` | `Builder` | `average` اسم بديل لـ `avg`. و`min` تعيد أصغر قيمة في عمود. | `q.min("price")` |
+| `first` | `Builder` | تنفّذ الاستعلام بحد صف واحد على نسخة منه، وتعيد ذلك الصف. | `q.where("id", 1).first()` |
+| `doesntExist` | `Builder` | تعيد هل لا يطابق أي صف. | `q.where("email", e).doesntExist()` |
+| `each` `eachById` `chunkMap` | `Builder` | تمرّر الصفوف إلى callback أو تحوّلها صفحة بصفحة: `each` تقرأ 1000 صف في كل صفحة، و`eachById` تقسّم حسب الـ id، و`chunkMap` تحوّل كل صف وتعيد النتائج. | انظر «قراءة الجداول الكبيرة» |
+| `chunkByIdDesc` `lazyByIdDesc` | `Builder` | تقرآن صفحات الـ id من الأعلى إلى الأدنى، بـ callback (`chunkByIdDesc`) أو بـ iterable كسول (`lazyByIdDesc`). | انظر «قراءة الجداول الكبيرة» |
+| `forPage` `forPageAfterId` `forPageBeforeId` | `Builder` | تختار صفحة من الصفوف. `forPage` بـ offset وlimit، و`forPageAfterId` تأخذ الـ ids الأكبر من آخر id (الأصغر أولًا)، و`forPageBeforeId` تأخذ الأصغر منه (الأكبر أولًا). | `q.forPage(2, 15)` |
+| `getCountForPagination` | `Builder` | تعدّ الصفوف التي تعرضها كل الصفحات معًا، على نسخة فلا يتغيّر الـ builder. | انظر «Pagination (ترقيم الصفحات)» |
+| `crossJoin` `crossJoinSub` `leftJoin` `leftJoinWhere` `rightJoin` `rightJoinSub` `rightJoinWhere` `joinSub` `joinWhere` | `Builder` | صيغ ربط إضافية: `crossJoin` بلا شروط، و`leftJoin` و`rightJoin` على عمودين، وصيغ `...Sub` على استعلام فرعي، وصيغ `...Where` تقارن عمودًا بقيمة مربوطة. | `q.leftJoin("posts", "users.id", "posts.user_id")` |
+| `fromSub` `getFrom` | `Builder` | `fromSub` تقرأ من استعلام فرعي بـ alias. و`getFrom` تعيد الجدول. | `q.fromSub(sub, "recent")` |
+| `unionAll` | `Builder` | تضم استعلامًا بـ `union all` الذي يُبقي الصفوف المكررة. | انظر «الربط والاستعلامات الفرعية والاتحاد» |
+| `hasJoins` `newQuery` | `Builder`, `JoinClause` | `hasJoins` تخبر هل في الاستعلام joins. و`newQuery` تعيد builder جديدًا فارغًا على نفس الاتصال والـ grammar والـ processor. | `q.newQuery().table("posts")` |
+| `getConnection` `connection` `grammar` `getGrammar` `processor` `getProcessor` | `Builder`, `QueryFactory` | تعيد الأجزاء التي يعمل عليها الاستعلام: الاتصال، والـ grammar الذي يبني الـ SQL، والـ processor الذي يشكّل النتائج. وعلى `QueryFactory` تعيد ما يخص الـ factory نفسه. | `q.getGrammar()` |
+| `query` | `QueryFactory` | تبدأ استعلامًا بلا جدول، مثلًا لـ `selectRaw("1")`. | `factory.query().selectRaw("1")` |
+| `decrement` `decrementEach` `incrementEach` | `Builder` | `decrement` تطرح 1 (أو مقدارًا) من عمود الصفوف المطابقة. و`incrementEach` و`decrementEach` تغيّران عدة أعمدة دفعة واحدة. | `q.where("id", 1).decrement("stock")` |
+| `insertOrIgnoreUsing` | `Builder` | تدرج الصفوف التي يعيدها استعلام فرعي وتتخطى الصفوف التي تخالف قيد unique أو primary key. | انظر «insertOrIgnore وupsert وupdateOrInsert» |
+| `truncate` | `Builder` | تفرّغ الجدول. | `q.table("logs").truncate()` |
+| `latest` `oldest` | `Builder` | ترتّب حسب `created_at`، الأحدث أولًا (`latest`) أو الأقدم أولًا (`oldest`). | `q.latest()` |
+| `inRandomOrder` | `Builder` | ترتّب عشوائيًا. | `q.inRandomOrder().limit(1)` |
+| `reorder` `reorderDesc` | `Builder` | `reorder` تزيل كل ترتيب وقيمه المربوطة، بما فيها ترتيب الـ union. و`reorderDesc` تستبدل كل ترتيب بعمود واحد تنازليًا. | `q.reorder("id")` |
+| `offset` `skip` `take` | `Builder` | `offset` تتخطى صفوفًا (والقيمة السالبة تعني صفرًا). و`skip` اسم بديل لـ `offset`، و`take` اسم بديل لـ `limit`. | `q.skip(10).take(5)` |
+| `toRawSql` | `Builder` | `toRawSql` تبني الاستعلام مع كتابة القيم المربوطة نصًا حرفيًا، للعرض والـ logging فقط. | `q.where("id", 1).toRawSql()` |
+| `whereNot` `orWhereNot` | `Builder` | شرط منفي يقارن عمودًا بقيمة بالمساواة (`orWhereNot` تربطه بـ OR). | `q.whereNot("status", "draft")` |
+| `whereNull` `orWhereNull` | `Builder`, `JoinClause` | شرط أن كل عمود قيمته null (`orWhereNull` تربطه بـ OR). | `q.whereNull("deleted_at")` |
+| `whereNotNull` `orWhereNotNull` | `Builder` | شرط أن كل عمود قيمته ليست null (`orWhereNotNull` تربطه بـ OR). | `q.whereNotNull("email")` |
+| `whereNotIn` `orWhereIn` `orWhereNotIn` | `Builder` | شروط IN وNOT IN، هنا على صفوف استعلام فرعي، مع صيغ `or`. | `q.orWhereIn("id", sub)` |
+| `whereNotBetween` `orWhereBetween` `orWhereNotBetween` | `Builder` | شروط BETWEEN وNOT BETWEEN لزوج من القيم، مع صيغ `or`. | `q.whereNotBetween("age", 18, 65)` |
+| `whereBetweenColumns` `whereNotBetweenColumns` `orWhereBetweenColumns` `orWhereNotBetweenColumns` | `Builder` | عمود يقع (أو لا يقع) بين عمودين آخرين، مع صيغ `or`. | `q.whereBetweenColumns("price", "min", "max")` |
+| `whereValueBetween` `whereValueNotBetween` `orWhereValueBetween` `orWhereValueNotBetween` | `Builder` | قيمة تقع (أو لا تقع) بين عمودين، مع صيغ `or`. | `q.whereValueBetween(5, "low", "high")` |
+| `orWhereColumn` | `Builder` | تقارن عمودين بالمساواة (تربطها `orWhereColumn` بـ OR). | `q.orWhereColumn("a", "b")` |
+| `whereNotExists` `orWhereExists` `orWhereNotExists` | `Builder` | شروط EXISTS وNOT EXISTS على استعلام فرعي، مع صيغ `or`. | `q.whereNotExists(sub -> ...)` |
+| `whereNotLike` `orWhereLike` `orWhereNotLike` | `Builder` | شروط LIKE وNOT LIKE غير حساسة لحالة الأحرف، مع صيغ `or`. | `q.whereNotLike("name", "a%")` |
+| `orWhereAll` `orWhereAny` `orWhereNone` | `Builder` | مجموعات `or` على عدة أعمدة: كل الأعمدة تساوي القيمة (`All`)، أو واحد منها على الأقل (`Any`)، أو لا واحد (`None`). | `q.orWhereAny(cols, "x")` |
+| `whereDay` `whereYear` `whereTime` `orWhereDate` `orWhereDay` `orWhereMonth` `orWhereYear` `orWhereTime` | `Builder` | شروط على جزء من عمود تاريخ أو وقت نصي: اليوم أو الشهر أو السنة أو الوقت (والتاريخ في `orWhereDate`)، بالمساواة. صيغ `or` تربط بـ OR. | `q.whereYear("created_at", 2026)` |
+| `whereIntegerInRaw` | `Builder` | عمود ضمن قائمة أعداد صحيحة تُكتب داخل الـ SQL ولا تُربط؛ والقائمة الفارغة لا تطابق أي صف. | `q.whereIntegerInRaw("id", List.of(1, 2))` |
+| `whereNullSafeEquals` `orWhereNullSafeEquals` | `Builder` | مقارنة تعدّ قيمتي null متساويتين، مع صيغة `or`. | `q.whereNullSafeEquals("a", null)` |
+| `whereRowValues` `orWhereRowValues` | `Builder` | تقارن صفًا من الأعمدة بصف من القيم: `(a, b) < (?, ?)`. | `q.whereRowValues(cols, "<", vals)` |
+| `orWhereRaw` `orHavingRaw` | `Builder` | SQL موثوق يُربط بالشروط السابقة بـ OR، في `where` أو `having`. | `q.orWhereRaw("a > b")` |
+| `groupWheresAt` | `Builder` | تعيد تجميع شروط where حول فهرس معيّن. | - |
+| `orHaving` `orHavingBetween` `orHavingNotBetween` `orHavingNull` `orHavingNotNull` `orHavingNested` `havingBetween` `havingNotBetween` `havingNull` `havingNotNull` `havingNested` | `Builder` | شروط having: between وnot between وnull وnot null ومجموعة متداخلة بين أقواس. صيغ `orHaving...` تربط بـ OR. | `q.havingNotNull("total")` |
+| `on` `orOn` | `JoinClause` | داخل join، تضيف شرطًا يقارن عمودين بالمساواة (`orOn` تربطه بـ OR). | `join.on("a.id", "b.a_id")` |
+| `getTable` `getType` | `JoinClause` | على `JoinClause`، تعيدان الجدول المربوط ونوع الـ join. | `join.getType()` |
+| `close` `isClosed` | `QueryCursor` | `close` تحرّر الـ statement وكل ما يحمله الـ cursor (والاستدعاء الثاني لا يفعل شيئًا)، و`isClosed` تخبر هل أُغلق الـ cursor. | `try (var c = q.cursor()) { ... }` |
+| `currentPage` `lastPage` `perPage` `items` | `LengthAwarePage`, `SimplePage`, `CursorPage` | تقرأ كائن الصفحة: رقم الصفحة بدءًا من 1، ورقم الصفحة الأخيرة (1 إن لم يطابق صف)، وحجم الصفحة، والصفوف. | `page.items()` |
+| `previousCursor` | `CursorPage` | تعيد cursor الصفحة التي قبل هذه. | `page.previousCursor()` |
+| `encode` | `Cursor` | تكتب الـ cursor نصًا صالحًا للـ URL (base64url بلا padding). | `cursor.encode()` |
+| `parameter` `parameters` | `Cursor` | تعيد قيمة عمود ترتيب واحد، أو كل قيم الترتيب في الـ cursor. | `cursor.parameter("id")` |
+| `pointsToNextItems` `pointsToPreviousItems` | `Cursor` | تخبران هل يقود الـ cursor إلى الصفوف بعد موضعه أو قبله. | `cursor.pointsToNextItems()` |
+| `toString` `equals` `hashCode` | `LengthAwarePage`, `SimplePage`, `CursorPage`, `Cursor` | نص ومساواة وhash قياسية لقيم الصفحات والـ cursors. | - |
+| `on` | `QueryFactory` | تعيد هذا الـ factory مربوطًا باتصال آخر لقاعدة البيانات نفسها، مثل الاتصال الذي تعطيك إياه المعاملة. وترمي `IllegalArgumentException` مع نوع آخر من قواعد البيانات. | `query.on(tx)` |

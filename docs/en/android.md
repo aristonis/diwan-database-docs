@@ -28,22 +28,27 @@ public final class AppDb extends SQLiteOpenHelper {
     @Override public void onUpgrade(SQLiteDatabase db, int from, int to) { }
 }
 
-Connection db = Connection.builder()
-        .name("app")
-        .driver(AndroidSqliteDriver.of(new AppDb(context)))
+DatabaseConfig config = DatabaseConfig.builder()
+        .defaultConnection("app")
+        .connection(ConnectionConfig.builder("app").driver("android").build())
         .build();
 
-Migrator.builder(SQLiteSchema.of(db)).migrations(migrations).build().run();
-QueryFactory query = SQLiteQuery.of(db);
+DatabaseManager manager = DatabaseManager.builder()
+        .config(config)
+        .connector(AndroidConnector.of(() -> new AppDb(context), SQLiteQuery::of, SQLiteSchema::of))
+        .build();
+
+manager.migrator("app").migrations(migrations).build().run();
+QueryFactory db = manager.query();
 ```
 
 `of(SQLiteOpenHelper)` opens the database on the first call that needs it, and that call runs the
 helper's `onCreate` or `onUpgrade`. Make the first call off the main thread. The driver never
 closes the database; your app owns it.
 
-To register Android with a `DatabaseManager`, use
-`AndroidConnector.of(() -> helper, SQLiteQuery::of, SQLiteSchema::of)` and a connection with
-`driver("android")`. Build the first connection off the main thread.
+`AndroidConnector.of(...)` takes the two grammar factories once, here. After that your code asks the manager for `query()`, `schema()` and `migrator(name)` and never names a grammar class. Build the first connection off the main thread.
+
+Without a manager, build a `Connection` with `Connection.builder().name("app").driver(AndroidSqliteDriver.of(new AppDb(context))).build()` and use `SQLiteSchema.of(connection)` and `SQLiteQuery.of(connection)`.
 
 ## Threading
 
