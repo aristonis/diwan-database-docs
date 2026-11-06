@@ -5,7 +5,7 @@ The full list of changes in each version is in the
 also has a page on [GitHub Releases](https://github.com/aristonis/diwan-database/releases), with the
 same notes and the release files.
 
-## 0.1.0 (first release, not yet published)
+## 0.1.0 (first release, 2026-11-07)
 
 The first public version. It brings:
 
