@@ -1,0 +1,93 @@
+site_name: Diwan Database
+# Set this to your documentation site's public URL once it is live.
+site_url: https://docs.aristonis.org/diwan-database/
+repo_url: https://github.com/aristonis/diwan-database
+repo_name: aristonis/diwan-database
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+  icon:
+    language: material/translate
+    repo: fontawesome/brands/github
+
+# Explicit nav — paths are language-agnostic; the i18n plugin resolves each
+# entry to docs/en/... or docs/ar/... per the active locale.
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Connections and transactions: connections.md
+      - Query builder: query-builder.md
+      - Schema builder: schema.md
+      - Migrations: migrations.md
+      - Models: models.md
+      - Relations: relations.md
+      - Android: android.md
+  - Glossary: glossary.md
+  - AI agents:
+      - Overview: ai/index.md
+      - Agent rules file: ai/agent.md
+      - Skills: ai/skills.md
+      - Rules: ai/rules.md
+      - Feedback: ai/feedback.md
+      - Report an issue: ai/report-issue.md
+  - Differences from Laravel: differences.md
+  - Errors and exceptions: errors.md
+  - API reference: api.md
+  - Upgrade guide: upgrade.md
+
+plugins:
+  - search
+  # Requires: pip install mkdocs-static-i18n
+  - i18n:
+      docs_structure: folder
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - name: English
+          locale: en
+          build: true
+          default: true
+        - name: العربية
+          locale: ar
+          build: true
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/aristonis/diwan-database
+    - icon: fontawesome/solid/box
+      link: https://packagist.org/packages/aristonis/diwan-database
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - tables
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - toc:
+      permalink: true

@@ -1,0 +1,136 @@
+# Schema builder
+
+الـ `Schema` تنشئ الجداول وتغيّرها. تصف الجدول داخل callback (دالة يستدعيها النظام) على `Blueprint` (مخطط الجدول)، ثم تحوله الـ grammar (قواعد توليد SQL الخاصة بكل قاعدة بيانات) الخاصة بقاعدة بياناتك إلى SQL.
+
+```java
+import org.aristonis.diwan.database.schema.Schema;
+import org.aristonis.diwan.database.sqlite.SQLiteSchema;     // PostgresSchema.of(db) on PostgreSQL
+
+Schema schema = SQLiteSchema.of(db);
+```
+
+## الإنشاء والتعديل والحذف
+
+```java
+schema.create("users", table -> {
+    table.id();
+    table.string("email").unique();
+    table.booleanColumn("active").defaultValue(true);
+    table.enumColumn("role", List.of("admin", "member")).defaultValue("member");
+    table.rememberToken();
+    table.softDeletes();
+    table.timestamps();
+});
+
+schema.table("users", table -> table.text("bio").nullable());   // add a column
+schema.rename("users", "people");
+schema.dropIfExists("people");                                  // drop(...) fails if it is missing
+```
+
+الدالتان `create` و`table` تأخذان `Consumer<Blueprint>`. حين يحتاج استدعاء واحد إلى عدة جمل (جدول مع unique index)، تنفذها SQLite داخل transaction (معاملة) واحدة، فلا يبقى شيء ناقص عند الفشل. بادئة الجداول (table prefix) في الاتصال توضع قبل كل جدول وكل اسم index مولَّد.
+
+## أنواع الأعمدة
+
+الأسماء التي تتعارض مع كلمات Java المحجوزة لها لاحقة: `booleanColumn` و`floatColumn` و`doubleColumn` و`charColumn` و`enumColumn`. و`default` في Laravel هي `defaultValue`.
+
+| المجموعة | الدوال |
+|---|---|
+| المفاتيح | `id`, `increments`, `bigIncrements`, `foreignId`, `foreignUuid`, `foreignUlid` |
+| الأعداد الصحيحة | `tinyInteger`, `smallInteger`, `mediumInteger`, `integer`, `bigInteger` وصيغ `unsigned*` |
+| الأعداد | `decimal(column, total, places)`, `floatColumn`, `doubleColumn` |
+| النصوص | `string(column[, length])`, `charColumn`, `text`, `mediumText`, `longText` |
+| التواريخ والأوقات | `date`, `dateTime`, `time`, `timestamp`, صيغ `*Tz`, `year`, `instant` |
+| أخرى | `booleanColumn`, `json`, `jsonb`, `binary`, `uuid`, `ulid`, `ipAddress`, `macAddress`, `enumColumn`, `set` |
+| اختصارات | `timestamps`, `softDeletes`, `rememberToken`, عائلة `morphs` |
+
+لا يوجد نوع للمال في Diwan. استخدم `decimal("amount", 12, 2)` أو عمودًا صحيحًا بالوحدات الصغرى. العمود `instant` يخزن microseconds كاملة على SQLite و`timestamptz` على PostgreSQL، وتحوّل بـ `Instants.toMicros` و`Instants.read`. SQLite ليس فيها ما يشبه `set`، فترفض هذا النوع.
+
+## المعدّلات (Modifiers)
+
+```java
+table.string("slug", 120).nullable().unique();
+table.timestamp("seen_at").useCurrent();
+table.integer("qty").check("qty > 0");
+table.integer("total").storedAs("qty * price");
+```
+
+الشائعة منها `nullable` و`defaultValue` و`useCurrent` و`unique` و`index` و`primary` و`autoIncrement` و`unsigned` و`comment` و`virtualAs` و`storedAs`. SQLite تتجاهل `unsigned` و`comment`. وتضيف عمودًا `not null` بلا قيمة افتراضية فقط ما دام الجدول فارغًا. والـ enum على SQLite يرفض أي قيمة خارج قائمته، ويحافظ على هذه القاعدة عبر إعادات بناء الجدول اللاحقة.
+
+### تغيير عمود
+
+`change()` تعيد تعريف العمود. كما في Laravel 11 وما بعدها، التعريف الجديد يحل محل القديم بالكامل، فأعد ذكر كل معدّل تريد الإبقاء عليه.
+
+```java
+schema.table("posts", table -> table.string("title", 500).nullable().change());
+```
+
+تغيير عمود auto-increment (ترقيم تلقائي) غير مدعوم. على SQLite، أعد تسمية أو احذف عمودًا تشير إليه جداول أخرى في استدعاء `schema.table` منفصل عن `change()`. العمود الذي ما زال index أو مفتاح يستخدمه لا يمكن حذفه، فاحذف الـ index أو المفتاح أولًا، وفي الاستدعاء نفسه إن شئت.
+
+## الفهارس (Indexes)
+
+```java
+table.index("user_id", "title");                  // columns in order
+table.unique(List.of("slug", "tenant_id"), "posts_slug_tenant");
+table.primary("a", "b");
+table.dropIndex("posts_user_id_title_index");
+table.dropUnique(List.of("slug"));
+table.renameIndex("old_name", "new_name");
+```
+
+## المفاتيح الأجنبية (Foreign keys)
+
+```java
+table.foreignId("user_id").constrained().cascadeOnDelete();     // points at users.id
+table.foreignId("editor_id").nullable().constrained("users").nullOnDelete();
+
+table.foreign("order_id").references("id").on("orders").onDelete(ForeignKeyAction.CASCADE);
+table.dropForeign(List.of("order_id"));
+table.dropConstrainedForeignId("user_id");                       // key, index and column
+```
+
+إجراءات الحذف والتحديث هي `cascade` و`restrict` و`set null` و`no action`، ولكل منها دالة تبدأ بـ `on...`.
+
+## قيود check والأعمدة المولَّدة وSQL الخام
+
+```java
+schema.create("lines", table -> {
+    table.id();
+    table.integer("qty").check("qty > 0");
+    table.integer("price");
+    table.integer("total").storedAs("qty * price");
+    table.check("lines_price_check", "price >= 0");
+});
+schema.statement("create index lines_total on lines (total)");
+```
+
+الـ SQL الذي تعطيه لـ `check` و`storedAs` و`virtualAs` و`rawColumn` و`statement` يدخل الجملة كما كُتب. ابنِه من ثوابت، لا من مدخلات المستخدم. أسماء الجداول والأعمدة حالة مختلفة: علامات الاقتباس داخل الاسم تُهرَّب، ولا يُرفض إلا الاسم الفارغ والاسم الذي فيه محارف تحكم. استخدم `schema.driverName()` (تعيد `"sqlite"` أو `"pgsql"`) حين يختلف الـ SQL الخام بين القواعد.
+
+## إعادة بناء الجدول على SQLite
+
+SQLite لا تستطيع إضافة primary key (مفتاح أساسي) أو foreign key (مفتاح أجنبي) إلى جدول موجود أو حذفه منه. لذلك يعيد Diwan بناء الجدول ويحتفظ بصفوفه وفهارسه وعدّاد auto-increment. إذا خالف صف المفتاح الجديد، لا يتغير شيء وتذكر `ForeignKeyCheckException` الجداول وعدد الصفوف.
+
+داخل transaction فتحتها بنفسك، لا يُعاد بناء جدول تشير إليه جداول أخرى (`ForeignKeysOffRequiredException`). نفّذ هذا التغيير في [migration](migrations.md) أو داخل `schema.withoutForeignKeyConstraints(s -> ...)`.
+
+## فحص ما هو موجود
+
+```java
+boolean hasUsers = schema.hasTable("users");
+boolean hasBio = schema.hasColumn("users", "bio");
+
+for (IndexInfo index : schema.indexes("posts")) {
+    System.out.println(index.name() + " " + index.columns() + " unique=" + index.isUnique());
+}
+for (ForeignKeyInfo key : schema.foreignKeys("posts")) {
+    System.out.println(key.columns() + " -> " + key.foreignTable() + key.foreignColumns());
+}
+```
+
+## معاينة الـ SQL
+
+```java
+List<LoggedQuery> plan = schema.pretend(s -> s.create("t", table -> table.id()));
+```
+
+`pretend` تسرد الجمل ولا تغير شيئًا. هي تقرأ الجداول الحية، فتعرض إعادة البناء بجملها الحقيقية، لكن الجدول الذي أُنشئ قبلها في نفس تشغيل pretend (وضع المعاينة دون تنفيذ) لا يكون موجودًا بالنسبة لها. و`hasTable` و`hasColumn` تعيدان `false` في وضع pretend.
+
+التالي: [Migrations](migrations.md).
