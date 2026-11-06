@@ -6,6 +6,8 @@ repo_name: aristonis/diwan-database
 
 theme:
   name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
   palette:
     - scheme: default
       primary: indigo
@@ -56,6 +58,7 @@ nav:
   - Errors and exceptions: errors.md
   - API reference: api.md
   - Upgrade guide: upgrade.md
+  - Releases: releases.md
 
 plugins:
   - search

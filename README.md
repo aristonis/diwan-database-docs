@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo/diwan-database.svg" alt="Diwan Database logo" width="128"></p>
+
 # diwan-database-docs
 
 Documentation for [Diwan Database](https://github.com/aristonis/diwan-database), a Java port of
