@@ -6,9 +6,9 @@
 
 | المهارة | تُفعَّل عندما |
 |---|---|
-| `diwan-usage` | تضيف Diwan، أو تبني `Connection`، أو تختار SQLite أو PostgreSQL، أو تلفّ عملًا في transaction (معاملة). |
-| `diwan-query-builder` | تكتب أو تراجع استعلامًا بـ `table(...)`: فلاتر، joins، ترقيم صفحات، قراءة على دفعات، cursors، upsert، row locks (أقفال صفوف)، تعبيرات raw. |
-| `diwan-migrations` | تنشئ جدولًا، أو تعدّل عمودًا، أو تضيف migration (تهجيرًا)، أو تشغّل وتتراجع، أو يظهر خطأ checksum. |
+| `diwan-usage` | تضيف Diwan، أو تبني `Connection`، أو تختار SQLite أو PostgreSQL، أو تلفّ عملًا في transaction (معاملة)، أو تنقل طبقة JDBC أو SQL قائمة إلى Diwan. |
+| `diwan-query-builder` | تكتب أو تراجع استعلامًا بـ `table(...)`: فلاتر، joins، ترقيم صفحات، limit وoffset، قراءة على دفعات، cursors، upsert، row locks (أقفال صفوف)، تعبيرات raw. |
+| `diwan-migrations` | تنشئ جدولًا، أو تعدّل عمودًا، أو تضيف migration (تهجيرًا)، أو تملأ قاعدة ببيانات البداية (seeder)، أو تشغّل وتتراجع، أو يظهر خطأ checksum. |
 | `diwan-models-relations` | تضيف model (نموذجًا) أو relation (علاقة) أو casts أو scopes أو eager loading، أو تعالج N+1. |
 | `diwan-android` | تشغّل Diwan على Android، أو تضبط الـ driver، أو تتعامل مع الـ threads، أو تصغّر بـ R8، أو تصطدم بحد مستوى API. |
 | `diwan-report-issue` | يفشل استدعاء في Diwan بطريقة لا تشرحها الوثائق، أو تطلب الإبلاغ عن خلل. |

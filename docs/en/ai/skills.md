@@ -6,9 +6,9 @@ A skill is a folder with one `SKILL.md`. Its frontmatter has a `name` and a `des
 
 | Skill | Triggers when |
 |---|---|
-| `diwan-usage` | You add Diwan, build a `Connection`, choose SQLite or PostgreSQL, or wrap work in a transaction. |
-| `diwan-query-builder` | You write or review a query with `table(...)`: filters, joins, pagination, chunking, cursors, upsert, row locks, raw expressions. |
-| `diwan-migrations` | You create a table, change a column, add a migration, run or roll back, or see a checksum error. |
+| `diwan-usage` | You add Diwan, build a `Connection`, choose SQLite or PostgreSQL, wrap work in a transaction, or port an existing JDBC or SQL layer to Diwan. |
+| `diwan-query-builder` | You write or review a query with `table(...)`: filters, joins, pagination, limit and offset, chunking, cursors, upsert, row locks, raw expressions. |
+| `diwan-migrations` | You create a table, change a column, add a migration, seed a database, run or roll back, or see a checksum error. |
 | `diwan-models-relations` | You add a model, a relation, casts, scopes or eager loading, or fix an N+1. |
 | `diwan-android` | You run Diwan on Android, set up the driver, handle threads, shrink with R8, or hit an API-level limit. |
 | `diwan-report-issue` | A Diwan call fails in a way the docs do not explain, or you ask to report a bug. |
