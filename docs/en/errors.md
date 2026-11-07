@@ -49,6 +49,17 @@ try {
 
 The driver classifies the failure. The classes are `DriverFailureKind.UNIQUE_VIOLATION`, `FOREIGN_KEY_VIOLATION`, `CONCURRENCY`, `CANCELLED`, `CONNECTION_LOST` and `COMMIT_OUTCOME_UNKNOWN`. If `COMMIT` fails with a lost connection, the commit may have landed. Check the database before you retry or undo.
 
+The `getCause()` of a `QueryException` is a `DriverException`. Its message has a fixed form:
+
+```text
+Database failure (SQL state unknown, vendor code 5): concurrency, SQLITE_BUSY
+```
+
+The first part always appears. The kinds the driver recognised follow after `: `, as lower-case
+words, and the SQLite result code name follows them when Diwan knows the code. With neither a
+kind nor a known code, the message is the first part only. The message never holds values or
+database text.
+
 ## What messages never contain
 
 The message of a `QueryException` reads like this:
@@ -85,7 +96,7 @@ By default it holds no binding values and no database error text, because both c
 | Exception | Meaning |
 |---|---|
 | `MigrationFailedException` | A migration failed. The cause is the real failure. `phase()` says whether the migration or only its record failed. Earlier migrations stay applied. |
-| `MigrationChecksumException` | A migration that already ran was edited. Nothing ran. Restore it, or accept the change with `repairChecksums`. |
+| `MigrationChecksumException` | A migration that already ran was edited. Nothing ran. Restore it and change the schema with a new migration. `repairChecksums` is recovery only. |
 | `MissingMigrationsException` | A rollback or reset would reach records whose migrations the migrator does not have. Deploy the newer code, or build with `allowMissingOnRollback()`. |
 | `ForeignKeysOffRequiredException` | A SQLite table rebuild needs foreign keys off. The migrator handles it. Elsewhere, use `Schema.withoutForeignKeyConstraints`. |
 | `ForeignKeyCheckException` | Rows broke a foreign key after a table rebuild. The change is undone. The message names tables and counts, never row values. |

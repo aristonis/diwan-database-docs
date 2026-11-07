@@ -48,6 +48,22 @@ Rows are `Map<String, Object>`. Other filters include `whereBetween`, `whereLike
 `whereAny`, `whereAll`, `whereNone`, grouped conditions with `where(q -> ...)`, and `groupBy` with
 `having`. `toSql()` and `getBindings()` show what a builder will run.
 
+`where(column, operator, value)` accepts the builder's operators (`=`, `<`, `>`, `<=`, `>=`, `<>`,
+`!=`, `like`, `not like`, `ilike` and others) plus the grammar's own. An unknown operator is taken
+as the value, so `where("total", "=>", 10)` compares `total` with the text `=>`, as in Laravel.
+
+### Empty lists
+
+An empty `whereIn` list matches no row (`0 = 1`). An empty `whereNotIn` list matches every row
+(`1 = 1`), as in Laravel. That is the right answer for "every row except none", but in a delete it
+removes everything the other conditions select. Make sure an empty list really means "none" and not
+"not loaded":
+
+```java
+// "delete the task's alarms except these": with keep empty, every alarm of the task goes
+query.table("alarms").where("task_id", taskId).whereNotIn("id", keep).delete();
+```
+
 Date wheres (`whereDate`, `whereMonth` and the others) are for text date columns. On an instant
 column use `whereInstantBetween(column, from, to)`.
 
@@ -139,10 +155,10 @@ connection.transaction(c -> {
 
 - PostgreSQL needs a transaction for a locked select and throws `IllegalStateException` outside one.
   Run the query on the connection the `transaction(...)` callback gives you.
-- SQLite has no row locks. The plain `UPDATE` and `SHARE` locks write nothing, and the PostgreSQL-only
-  ones (`NO_KEY_UPDATE`, `KEY_SHARE`, `NOWAIT`, `SKIP_LOCKED`) throw
-  `UnsupportedOperationException`. Code that relies on a lock for mutual exclusion is safe only on
-  PostgreSQL.
+- SQLite has no row locks. Every strength (`UPDATE`, `SHARE`, `NO_KEY_UPDATE` and `KEY_SHARE`) writes
+  nothing there: SQLite locks the whole database, and only at a transaction's first write. `NOWAIT` and
+  `SKIP_LOCKED` throw `UnsupportedOperationException`. Code that relies on a lock for mutual
+  exclusion is safe only on PostgreSQL.
 - Aggregates, `exists` and the count behind `paginate` leave the lock out. A union with a lock is
   refused.
 

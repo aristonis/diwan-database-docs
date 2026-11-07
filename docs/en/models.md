@@ -98,6 +98,22 @@ as instants, dates as dates. Reading a cast value never makes a model dirty, but
 Date formats are Java `DateTimeFormatter` patterns. Write `yyyy-MM-dd`, not PHP's `Y-m-d`: the PHP
 form compiles in Java and means something else.
 
+`Casts.instant()` stores an `Instant` whatever the model's `timestampFormat()`. Use it for
+`Blueprint.instant` columns. `created_at`, `updated_at` and `deleted_at` are also written directly
+by soft delete, bulk update and touch, always in the model's format. So when those columns are
+`instant`, the model needs `TimestampFormat.INSTANT`. A model on the TEXT format that puts the
+instant cast on one of them fails at first use, and the message names the column.
+
+```java
+@Override
+protected TimestampFormat timestampFormat() { return TimestampFormat.INSTANT; }
+
+@Override
+protected Map<String, Cast<?>> casts() {
+    return CastMap.create().put("sent_at", Casts.instant()).build();   // any other instant column
+}
+```
+
 Accessors and mutators are registered in `accessors()`, not discovered by name:
 
 ```java
@@ -147,6 +163,45 @@ users.query().insertOrIgnore(rows);
 ```
 
 `upsert` needs SQLite 3.24 or later, which means Android API 30 or later. See [Android](android.md).
+
+`fillAndInsert`, `fillAndInsertOrIgnore` and `fillAndInsertGetId` fill each row as `fill` does, then
+insert it. They are called on the model builder, not on `ModelQuery`:
+
+```java
+Member.query.on(db).query().fillAndInsert(rows);
+int added = Member.query.on(db).query().fillAndInsertOrIgnore(rows);
+Object id = Member.query.on(db).query().fillAndInsertGetId(row);
+```
+
+The fill skips the fillable guard, so never pass request data to these methods unchecked. Casts
+apply, unique ids and timestamps are set, and a `created_at` or `updated_at` the row already has is
+kept. `beforeWrite()` runs on each row, but no model event fires. The list forms write every row in
+one statement, so all rows need the same columns, and a large batch must stay under the binding
+limit (999 on SQLite before 3.32).
+
+## Query shortcuts
+
+`whereBelongsTo` filters the children of a parent through the `belongsTo` relation the child
+declares. Without a name it uses the parent's class name in camel case, so `user` for `User`. Under
+R8 or other renaming, pass the relation name:
+
+```java
+ModelQuery<Post> posts = Post.query.on(db);
+posts.query().whereBelongsTo(ada).get();                          // relation "user"
+posts.query().whereBelongsTo(ada, "author").get();
+posts.query().whereBelongsTo(List.of(ada, sam), "author").get();  // one in clause
+posts.query().where("pinned", true).orWhereBelongsTo(ada, "author").get();
+```
+
+The methods refuse an empty collection, a parent of the wrong class and a parent without a key
+value.
+
+`pluck(column, key)` returns a map from the key column to the column, with raw values as
+`pluck(column)` gives them:
+
+```java
+Map<Object, Object> ids = Member.query.on(db).query().pluck("id", "code");   // code -> id
+```
 
 ## Scopes
 
@@ -277,6 +332,7 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `getHidden` `getVisible` `setHidden` `setVisible` `makeHidden` `makeVisible` `getAppends` `setAppends` `append` `withoutAppends` | `Model` | Serialization lists: read or replace the hidden, visible and appended (computed) attributes, add to them (`makeHidden`, `append`), show hidden ones (`makeVisible`) or remove every appended one (`withoutAppends`). | `post.makeHidden("secret")` |
 | `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | Model settings as the model resolves them: table, primary key name and type, whether the database assigns the key, the key qualified by table (`users.id`), a column qualified by table, the foreign key name other tables use for this model, the default page size and the unique id kind. | `post.getQualifiedKeyName()` |
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | Connection access: the model's connection and its name, binding the model to a query factory (`setConnection`), the factory it uses, and a new base query builder on the model's table. | `post.newBaseQuery().where("id", 1)` |
+| `Casts.instant` | `Casts` | A cast that stores an `Instant` whatever the model's timestamp format, for `Blueprint.instant` columns. Timestamp columns also need `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | Time and JSON settings: the codec behind JSON casts and the JSON form, the pattern of text timestamps, how timestamps are written, and the clock the model reads timestamps from. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | Timestamp columns: the created-at, updated-at and deleted-at column names (the last one also qualified by table), and whether the model writes timestamps now. | `post.usesTimestamps()` |
 | `freshTimestamp` `freshTimestampValue` `fromDateTime` `updateTimestamps` | `Model` | Timestamp helpers: the current moment from the model's clock, in the form the model stores, converting a moment to that form, and setting `updated_at` (and `created_at` on a new model) unless already dirty. | `post.updateTimestamps()` |
@@ -305,7 +361,9 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `withoutTrashed` | `EloquentBuilder` | Excludes soft-deleted rows, also after `withTrashed()`. | `Post.query().withoutTrashed()` |
 | `withOnly` `without` `getEagerLoads` | `EloquentBuilder` | Eager loads: `withOnly` replaces every eager load, `without` removes eager loads by exact path (`without("posts")` keeps `posts.comments`), `getEagerLoads` returns the current set. | `Post.query().withOnly("user")` |
 | `toBase` `getBindings` `toSql` `lock` `lockForUpdate` `sharedLock` | `EloquentBuilder` | Reach the SQL layer: a copy of the wrapped query builder with global scopes applied (`toBase`), the select's bindings and SQL (`getBindings`, `toSql`), and row locks (`lock`, `lockForUpdate`, `sharedLock`). | `Post.query().lockForUpdate()` |
-| `forPage` `skip` `take` `reorder` `inRandomOrder` `oldest` `orderByDesc` `orderByRaw` `pluck` `value` `selectRaw` `leftJoin` | `EloquentBuilder` | Query builder methods that `EloquentBuilder` forwards, with the same meaning as on the query builder: paging (`forPage`, `skip`, `take`), ordering (`reorder`, `inRandomOrder`, `oldest`, `orderByDesc`, `orderByRaw`), reads (`pluck`, `value`), `selectRaw` and `leftJoin`. | See [Query builder](query-builder.md) |
+| `forPage` `skip` `take` `reorder` `inRandomOrder` `oldest` `orderByDesc` `orderByRaw` `pluck` `value` `selectRaw` `leftJoin` | `EloquentBuilder` | Query builder methods that `EloquentBuilder` forwards, with the same meaning as on the query builder: paging (`forPage`, `skip`, `take`), ordering (`reorder`, `inRandomOrder`, `oldest`, `orderByDesc`, `orderByRaw`), reads (`pluck`, which also takes a key column as `pluck(column, key)` and returns a map, and `value`), `selectRaw` and `leftJoin`. | See [Query builder](query-builder.md) |
+| `whereBelongsTo` `orWhereBelongsTo` | `EloquentBuilder` | Filters children by a parent through the `belongsTo` relation: by default the parent's class name in camel case, or the relation name given second. A collection gives one `in` clause. The `or` form joins with OR. | `posts.query().whereBelongsTo(ada, "author")` |
+| `fillAndInsert` `fillAndInsertOrIgnore` `fillAndInsertGetId` | `EloquentBuilder` | Fill each row as `fill` does, without the fillable guard, then insert the rows in one statement (`fillAndInsertGetId` inserts one row and returns its key). | `Member.query.on(db).query().fillAndInsert(rows)` |
 | `whereKey` `whereKeyNot` | `EloquentBuilder` | Constrain the qualified primary key: `users.id = ?`, or `in` for a collection (`whereKeyNot` excludes). | `Post.query().whereKey(ids)` |
 | `whereGroup` `orWhereGroup` | `EloquentBuilder` | Add a parenthesised group of clauses built on an Eloquent builder for the same model (`orWhereGroup` joins with OR), as Laravel's `where(Closure)`. | `q.whereGroup(g -> g.where("a", 1).orWhere("b", 2))` |
 | `whereInstantBetween` | `EloquentBuilder` | Adds a clause for moments in a half-open range. | `q.whereInstantBetween("created_at", from, to)` |

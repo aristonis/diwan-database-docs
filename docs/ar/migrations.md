@@ -84,6 +84,8 @@ Migrator migrator = Migrator.builder(mainSchema)
         .build();
 ```
 
+جدول الـ migrations أعمدته `id` و`migration` (الاسم، حتى 191 حرفًا، فريد) و`batch` و`checksum` (حتى 64 حرفًا، يقبل null). لقراءة الأسماء المنفّذة استعمل `migrator.status()` أو `migrator.repository().getRan()`، لا SQL.
+
 ## الأحداث (Events)
 
 الـ `MigrationListener` يراقب عمل الـ migrator. كل دالة فيه اختيارية.
@@ -139,12 +141,14 @@ Migrator migrator = Migrator.builder(PostgresSchema.of(connection))
 
 ## الـ Checksums
 
-افتراضيًا يمكن تعديل migration نُفذت دون أن يلاحظ أحد. تجاوز `checksum()` لتفعّل الفحص.
+الـ migration المنشور مقفل: لا تعدّله أبدًا ولا تغيّر checksum الخاص به. غيّر الـ schema بـ migration جديد.
+
+الدالة `checksum()` تعيد قيمة ثابتة لذلك الـ migration، تُضبط مرة واحدة. هي تكشف تعديلًا عرضيًا؛ وليست رقم إصدار. افتراضيًا يمكن تعديل migration نُفذت دون أن يلاحظ أحد، لذا تجاوز `checksum()` لتفعّل الفحص.
 
 ```java
 @Override
 public Optional<String> checksum() {
-    return Optional.of("v2");     // a label you bump on purpose, or MigrationChecksum.of(text)
+    return Optional.of("1");     // fixed, never changed, or MigrationChecksum.of(text)
 }
 ```
 
@@ -153,7 +157,7 @@ public Optional<String> checksum() {
 - التشغيل يسجل الـ checksum (بصمة رقمية للتهجير) في جدول migrations.
 - قبل التشغيل أو تشغيل pretend، يقارن الـ migrator كل migration نُفذت ولها checksum مسجل وآخر معلن. إذا اختلف أي منها ترمي `MigrationChecksumException` قائمةً بها كلها ولا يُنفذ شيء.
 - الـ migration التي لا تعلن شيئًا لا تُفحص أبدًا. والتي تبدأ بإعلان checksum يُسجل لها في التشغيل التالي.
-- لقبول تعديل مقصود استدعِ `migrator.repairChecksums(migrator.migrations())`. ولمسح كل checksum مسجل استدعِ `migrator.clearChecksums()`. كلتاهما تأخذ قفل الـ migration ولا تطلق أحداثًا.
+- للاسترداد فقط، في قاعدة محلية لم تُنشر قط أو بعد حادث معروف: استدعِ `migrator.repairChecksums(migrator.migrations())` لإعادة كتابة كل checksum مسجل بالمعلن، أو `migrator.clearChecksums()` لمسح كل checksum مسجل. كلتاهما تأخذ قفل الـ migration ولا تطلق أحداثًا.
 
 ## الـ Seeders
 

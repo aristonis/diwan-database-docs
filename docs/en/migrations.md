@@ -98,6 +98,10 @@ Migrator migrator = Migrator.builder(mainSchema)
         .build();
 ```
 
+The migrations table has the columns `id`, `migration` (the name, up to 191 characters, unique),
+`batch`, and `checksum` (up to 64 characters, nullable). To read the applied names, use
+`migrator.status()` or `migrator.repository().getRan()`, not SQL.
+
 ## Events
 
 A `MigrationListener` watches a migrator work. Every method is optional.
@@ -160,13 +164,17 @@ For another database, implement `MigrationLock` (`acquire()` and `release()`).
 
 ## Checksums
 
-By default a migration that already ran can be edited without anyone noticing. Override `checksum()`
-to opt in to a check.
+A migration that has been deployed is locked: never edit it and never change its checksum. Change
+the schema with a new migration.
+
+`checksum()` returns a fixed constant for that migration, set once. It detects an accidental edit;
+it is not a version. By default a migration that already ran can be edited without anyone noticing,
+so override `checksum()` to opt in to the check.
 
 ```java
 @Override
 public Optional<String> checksum() {
-    return Optional.of("v2");     // a label you bump on purpose, or MigrationChecksum.of(text)
+    return Optional.of("1");     // fixed, never changed, or MigrationChecksum.of(text)
 }
 ```
 
@@ -180,9 +188,10 @@ hashes compiled code, because that changes between compilers and shrinkers.
   nothing runs.
 - A migration that declares nothing is never checked. One that starts declaring a checksum has it
   recorded on the next run.
-- To accept an intended edit, call `migrator.repairChecksums(migrator.migrations())`. To drop every
-  recorded checksum, call `migrator.clearChecksums()`. Both take the migration lock and fire no
-  events.
+- Recovery only, for a local database that was never deployed or a known accident: call
+  `migrator.repairChecksums(migrator.migrations())` to rewrite each recorded checksum to the
+  declared one, or `migrator.clearChecksums()` to drop every recorded checksum. Both take the
+  migration lock and fire no events.
 
 ## Seeders
 

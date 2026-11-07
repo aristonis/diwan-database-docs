@@ -65,7 +65,7 @@ QueryFactory db = manager.query();
 
 ## الـ Write-ahead logging
 
-`beginTransaction` في Android حصرية (exclusive). بلا write-ahead logging (WAL، سجل الكتابة المسبقة) تمنع transaction طويلة القراءات من threads أخرى.
+يبدأ Diwan معاملات Android بـ `beginTransaction` الحصرية (exclusive)، أو بـ `beginTransactionNonExclusive` إذا ضبط الاتصال `transaction_mode` على `immediate` (انظر [الاتصالات](connections.md)). بلا write-ahead logging (WAL، سجل الكتابة المسبقة) تمنع transaction طويلة القراءات من threads أخرى.
 استدعِ `enableWriteAheadLogging()` في `onConfigure` كما أعلاه، وأبقِ المعاملات قصيرة.
 
 ## ما يحتاج Android أحدث
@@ -82,7 +82,7 @@ QueryFactory db = manager.query();
 
 ## الأعداد العشرية والتواريخ
 
-عمود `decimal` له numeric affinity، فتُقرأ `10.10` على أنها العدد `10.1` من نوع double. للمال الدقيق استعمل عمودًا صحيحًا بوحدات صغرى.
+عمود `decimal` له numeric affinity، فتُقرأ `10.10` على أنها العدد `10.1` من نوع double. للقيم الدقيقة استعمل عمودًا صحيحًا بمقياس ثابت، أو نصًا بتدريج ثابت.
 تُخزَّن التواريخ نصًا بصيغة `yyyy-MM-dd HH:mm:ss`، والـ `Instant` نصًا بتوقيت UTC أو ميكروثواني صحيحة، كما في SQLite على سطح المكتب.
 
 ## سجل الاستعلامات للتصحيح

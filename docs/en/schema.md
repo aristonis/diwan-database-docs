@@ -46,9 +46,11 @@ Names that clash with Java keywords carry a suffix: `booleanColumn`, `floatColum
 | Other | `booleanColumn`, `json`, `jsonb`, `binary`, `uuid`, `ulid`, `ipAddress`, `macAddress`, `enumColumn`, `set` |
 | Shortcuts | `timestamps`, `softDeletes`, `rememberToken`, the `morphs` family |
 
-Diwan has no money type. Use `decimal("amount", 12, 2)` or an integer column of minor units.
 `instant` stores whole microseconds on SQLite and `timestamptz` on PostgreSQL; convert with
 `Instants.toMicros` and `Instants.read`. SQLite has nothing like `set`, so it refuses that type.
+On a model, write an `instant` column through `Casts.instant()`. For timestamp columns
+(`created_at`, `updated_at`, `deleted_at`), set `TimestampFormat.INSTANT` on the model instead. See
+[Models](models.md#attributes-accessors-and-casts).
 
 ## Modifiers
 
@@ -63,6 +65,22 @@ The common ones are `nullable`, `defaultValue`, `useCurrent`, `unique`, `index`,
 `autoIncrement`, `unsigned`, `comment`, `virtualAs` and `storedAs`. SQLite ignores `unsigned` and
 `comment`. It adds a not-null column without a default only while the table is empty. An SQLite
 enum refuses any value outside its list, and keeps that rule through later table rebuilds.
+
+### Collations
+
+A text column can say how its values compare and sort. `Collation.BINARY` is the portable byte
+order. PostgreSQL writes it as `"C"` and SQLite as `BINARY`, so one migration gives the same order
+on both.
+
+```java
+table.string("code").collation(Collation.BINARY);
+table.string("name").collation("nb_NO.utf8");    // the database's own name, written as given
+schema.table("codes", table -> table.string("code").collation(Collation.BINARY).change());
+```
+
+A name given as text is written as is, so it must be a collation the database knows. It cannot hold
+a quote or a control character. On SQLite a table rebuild keeps a column's collation. A `COLLATE`
+inside a table constraint, such as `unique (email collate nocase)`, is still refused.
 
 ### Changing a column
 
@@ -81,6 +99,7 @@ still uses cannot be dropped, so drop the index or key first, in the same call i
 
 ```java
 table.index("user_id", "title");                  // columns in order
+table.index(List.of("state", "next_fire_at"), "alarms_state_next");   // named index
 table.unique(List.of("slug", "tenant_id"), "posts_slug_tenant");
 table.primary("a", "b");
 table.dropIndex("posts_user_id_title_index");
@@ -101,6 +120,15 @@ table.dropConstrainedForeignId("user_id");                       // key, index a
 
 The delete and update actions are `cascade`, `restrict`, `set null` and `no action`, each with an
 `on...` method.
+
+PostgreSQL limits a name to 63 bytes, and the default name of a key on a long table can pass that.
+Name the key yourself with the third argument of `constrained`, or with the second argument of
+`references`:
+
+```java
+table.foreignId("attribute_id").constrained("product_attribute_values", "id", "pav_attribute_fk");
+table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values");
+```
 
 ## Check constraints, generated columns and raw SQL
 
@@ -181,3 +209,5 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `onUpdate` `cascadeOnUpdate` `restrictOnUpdate` `noActionOnUpdate` `nullOnUpdate` `restrictOnDelete` `noActionOnDelete` | `ForeignKeyDefinition` | Foreign key actions: `onUpdate` sets what happens when the referenced key changes, and the shortcuts cascade, restrict (refuse), refuse at the end of the statement (`noAction...`) or set NULL. | `fk.restrictOnDelete()` |
 | `deleteAction` `updateAction` `referencedTable` `referencedColumns` | `ForeignKeyDefinition` | Read a foreign key definition: the delete and update action if one was set, the referenced table and the referenced columns. | `fk.referencedTable()` |
 | `on` | `Schema` | Returns this schema builder bound to another connection of the same database, such as a transaction's. It throws `IllegalArgumentException` for another kind of database. | `schema.on(tx)` |
+| `collation` | `ColumnDefinition`, `ForeignIdColumnDefinition` | Sets the collation of a text column, given as a `Collation` or as a database collation name. On `ColumnDefinition`, `collation()` with no argument returns it as an `Optional`. | `column.collation(Collation.BINARY)` |
+| `of` `name` `isPortable` | `Collation` | `of` makes a collation the database knows by name. `name` returns the name, and `isPortable` tells whether the value is `Collation.BINARY`. | `Collation.of("nb_NO.utf8")` |

@@ -45,6 +45,17 @@ boolean any = query.table("orders").where("status", "open").exists();
 
 الصفوف من نوع `Map<String, Object>`. من المرشحات الأخرى `whereBetween` و`whereLike` و`whereColumn` و`whereAny` و`whereAll` و`whereNone`، والشروط المجمعة بـ `where(q -> ...)`، و`groupBy` مع `having`. الدالتان `toSql()` و`getBindings()` تعرضان ما سينفذه الـ builder.
 
+الدالة `where(column, operator, value)` تقبل عوامل المقارنة (operators) في الـ builder (`=` و`<` و`>` و`<=` و`>=` و`<>` و`!=` و`like` و`not like` و`ilike` وغيرها) وعوامل الـ grammar (قواعد توليد SQL) الخاصة بها. العامل المجهول يُعامل كأنه القيمة، فـ `where("total", "=>", 10)` يقارن `total` بالنص `=>`، كما في Laravel.
+
+### القوائم الفارغة
+
+قائمة `whereIn` الفارغة لا تطابق أي صف (`0 = 1`). وقائمة `whereNotIn` الفارغة تطابق كل الصفوف (`1 = 1`)، كما في Laravel. هذا هو الجواب الصحيح لـ «كل صف عدا لا شيء»، لكنه في delete يحذف كل ما تختاره الشروط الأخرى. تأكد أن القائمة الفارغة تعني «لا شيء» فعلًا وليس «لم تُحمَّل»:
+
+```java
+// "delete the task's alarms except these": with keep empty, every alarm of the task goes
+query.table("alarms").where("task_id", taskId).whereNotIn("id", keep).delete();
+```
+
 دوال التاريخ (`whereDate` و`whereMonth` وغيرهما) مخصصة لأعمدة التاريخ النصية. مع أعمدة الـ instant (لحظة زمنية) استخدم `whereInstantBetween(column, from, to)`.
 
 ## الربط والاستعلامات الفرعية والاتحاد
@@ -122,7 +133,7 @@ connection.transaction(c -> {
 `lockForUpdate()` و`sharedLock()` اختصاران لـ `lock(LockStrength.UPDATE)` و`lock(LockStrength.SHARE)`. لا يوجد قفل بنص خام كما في Laravel.
 
 - يحتاج select المقفول على PostgreSQL إلى transaction، ويرمي `IllegalStateException` خارجها. نفّذ الاستعلام على الاتصال الذي يعطيك إياه callback (دالة يستدعيها النظام) الدالة `transaction(...)`.
-- SQLite لا تدعم أقفال الصفوف. القفلان البسيطان `UPDATE` و`SHARE` لا يكتبان شيئًا، والأقفال الخاصة بـ PostgreSQL (`NO_KEY_UPDATE` و`KEY_SHARE` و`NOWAIT` و`SKIP_LOCKED`) ترمي `UnsupportedOperationException`. الكود الذي يعتمد على القفل للاستبعاد المتبادل آمن على PostgreSQL فقط.
+- SQLite لا تدعم أقفال الصفوف. كل قوة قفل (`UPDATE` و`SHARE` و`NO_KEY_UPDATE` و`KEY_SHARE`) لا تكتب شيئًا هناك: SQLite تقفل قاعدة البيانات كلها، وعند أول كتابة في الـ transaction فقط. و`NOWAIT` و`SKIP_LOCKED` ترميان `UnsupportedOperationException`. الكود الذي يعتمد على القفل للاستبعاد المتبادل آمن على PostgreSQL فقط.
 - الدوال التجميعية و`exists` وعدّاد `paginate` تهمل القفل. والـ union مع قفل مرفوض.
 
 ## Pagination (ترقيم الصفحات)

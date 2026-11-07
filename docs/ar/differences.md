@@ -51,7 +51,6 @@
 
 - أصناف أحداث مخصّصة، وأسماء أحداث نصية، وlisteners بالنمط العام (wildcard).
 - `ObservedBy`؛ سجّل observer (مراقب لأحداث النموذج) بـ `observe`.
-- أنواع المال. استعمل `decimal` أو عمودًا صحيحًا بوحدات صغرى.
 - MySQL وSQL Server وقواعد البيانات الأخرى. المدعوم: SQLite وPostgreSQL وAndroid.
 
 انظر أيضًا [النماذج](models.md) و[العلاقات](relations.md) و[Query builder](query-builder.md).

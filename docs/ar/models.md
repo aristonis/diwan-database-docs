@@ -96,6 +96,18 @@ order.getAttributes().get("price");   // the stored form, "12.50"
 صيغ التواريخ هي أنماط `DateTimeFormatter` في Java. اكتب `yyyy-MM-dd` لا `Y-m-d` الخاصة بـ PHP: تُترجَم صيغة PHP في Java
 لكنها تعني شيئًا آخر.
 
+يخزّن `Casts.instant()` قيمة `Instant` مهما كان `timestampFormat()` في النموذج. استعمله لأعمدة `Blueprint.instant`. والأعمدة `created_at` و`updated_at` و`deleted_at` تكتبها مباشرةً عمليات soft delete والتحديث الجماعي و`touch`، وبصيغة النموذج دائمًا. لذلك إذا كانت هذه الأعمدة من نوع `instant` فالنموذج يحتاج `TimestampFormat.INSTANT`. أما نموذج بصيغة TEXT يضع cast الـ instant على أحدها فيفشل عند أول استعمال، والرسالة تسمّي العمود.
+
+```java
+@Override
+protected TimestampFormat timestampFormat() { return TimestampFormat.INSTANT; }
+
+@Override
+protected Map<String, Cast<?>> casts() {
+    return CastMap.create().put("sent_at", Casts.instant()).build();   // any other instant column
+}
+```
+
 الـ accessors والـ mutators (دوال القراءة والكتابة المخصّصة للخاصية) تُسجَّل في `accessors()` ولا تُكتشف بالاسم:
 
 ```java
@@ -144,6 +156,36 @@ users.query().insertOrIgnore(rows);
 ```
 
 تحتاج `upsert` إلى SQLite 3.24 أو أحدث، أي Android API 30 أو أحدث. انظر [Android](android.md).
+
+تملأ `fillAndInsert` و`fillAndInsertOrIgnore` و`fillAndInsertGetId` كل صف كما تفعل `fill`، ثم تدرجه. تُستدعى على `EloquentBuilder` الذي تعيده `query()`، لا على `ModelQuery`:
+
+```java
+Member.query.on(db).query().fillAndInsert(rows);
+int added = Member.query.on(db).query().fillAndInsertOrIgnore(rows);
+Object id = Member.query.on(db).query().fillAndInsertGetId(row);
+```
+
+الملء هنا يتجاوز حماية `fillable`، فلا تمرّر بيانات الطلب إلى هذه الدوال دون فحص. تُطبَّق الـ casts، وتُضبط المعرّفات الفريدة والـ timestamps، وتبقى قيمة `created_at` أو `updated_at` الموجودة في الصف كما هي. تعمل `beforeWrite()` على كل صف، لكن لا يُطلق أي حدث نموذج. وصيغ القوائم تكتب كل الصفوف بعبارة واحدة، فيجب أن تحمل الصفوف كلها الأعمدة نفسها، وأن تبقى الدفعة الكبيرة تحت حد الربط (999 على SQLite قبل 3.32).
+
+## اختصارات الاستعلام
+
+تصفّي `whereBelongsTo` أبناء أب عبر علاقة `belongsTo` التي يعلنها الابن. من دون اسم تستعمل اسم صنف الأب بصيغة camel case، فيكون `user` للصنف `User`. مع R8 أو أي إعادة تسمية أخرى، مرّر اسم العلاقة:
+
+```java
+ModelQuery<Post> posts = Post.query.on(db);
+posts.query().whereBelongsTo(ada).get();                          // relation "user"
+posts.query().whereBelongsTo(ada, "author").get();
+posts.query().whereBelongsTo(List.of(ada, sam), "author").get();  // one in clause
+posts.query().where("pinned", true).orWhereBelongsTo(ada, "author").get();
+```
+
+ترفض هاتان الدالتان مجموعة فارغة، وأبًا من صنف خاطئ، وأبًا بلا قيمة مفتاح.
+
+تعيد `pluck(column, key)` خريطة من عمود المفتاح إلى العمود، بالقيم الخام كما تعطيها `pluck(column)`:
+
+```java
+Map<Object, Object> ids = Member.query.on(db).query().pluck("id", "code");   // code -> id
+```
 
 ## النطاقات (Scopes)
 
@@ -263,6 +305,7 @@ page.total();
 | `getHidden` `getVisible` `setHidden` `setVisible` `makeHidden` `makeVisible` `getAppends` `setAppends` `append` `withoutAppends` | `Model` | قوائم التسلسل: تقرأ أو تستبدل الخصائص المخفية والظاهرة والمضافة (المحسوبة)، وتضيف إليها (`makeHidden` و`append`)، أو تُظهر المخفية (`makeVisible`)، أو تزيل كل المضافة (`withoutAppends`). | `post.makeHidden("secret")` |
 | `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | إعدادات النموذج كما يحسمها: الجدول، واسم المفتاح الأساسي ونوعه، وهل تولّد قاعدة البيانات المفتاح، والمفتاح مسبوقًا باسم الجدول (`users.id`)، وعمود مسبوق باسم الجدول، واسم المفتاح الأجنبي الذي تستخدمه الجداول الأخرى لهذا النموذج، وحجم الصفحة الافتراضي، ونوع المعرّف الفريد. | `post.getQualifiedKeyName()` |
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | الوصول للاتصال: اتصال النموذج واسمه، وربط النموذج بـ query factory (`setConnection`)، والـ factory الذي يستخدمه، وbuilder أساسي جديد على جدول النموذج. | `post.newBaseQuery().where("id", 1)` |
+| `Casts.instant` | `Casts` | cast يخزّن `Instant` مهما كانت صيغة طوابع النموذج، لأعمدة `Blueprint.instant`. وأعمدة الطوابع تحتاج أيضًا `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | إعدادات الوقت وJSON: الـ codec خلف casts الـ JSON وصيغة JSON، ونمط الطوابع النصية، وطريقة كتابة الطوابع، والساعة التي يقرأ منها النموذج الطوابع. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | أعمدة الطوابع: أسماء أعمدة created-at وupdated-at وdeleted-at (الأخير أيضًا مسبوقًا بالجدول)، وهل يكتب النموذج الطوابع الآن. | `post.usesTimestamps()` |
 | `freshTimestamp` `freshTimestampValue` `fromDateTime` `updateTimestamps` | `Model` | دوال مساعدة للطوابع: اللحظة الحالية من ساعة النموذج بالصيغة التي يخزّنها، وتحويل لحظة إلى هذه الصيغة، وضبط `updated_at` (و`created_at` للنموذج الجديد) ما لم يكونا معدّلين. | `post.updateTimestamps()` |
@@ -291,7 +334,9 @@ page.total();
 | `withoutTrashed` | `EloquentBuilder` | تستبعد الصفوف المحذوفة ناعمًا، حتى بعد `withTrashed()`. | `Post.query().withoutTrashed()` |
 | `withOnly` `without` `getEagerLoads` | `EloquentBuilder` | التحميل المسبق: `withOnly` تستبدل كل تحميل مسبق، و`without` تزيل التحميلات بالمسار الدقيق (`without("posts")` تُبقي `posts.comments`)، و`getEagerLoads` تعيد المجموعة الحالية. | `Post.query().withOnly("user")` |
 | `toBase` `getBindings` `toSql` `lock` `lockForUpdate` `sharedLock` | `EloquentBuilder` | الوصول لطبقة SQL: نسخة من الـ builder المغلَّف مع تطبيق الـ global scopes (`toBase`)، وقيم select المربوطة والـ SQL (`getBindings` و`toSql`)، وأقفال الصفوف (`lock` و`lockForUpdate` و`sharedLock`). | `Post.query().lockForUpdate()` |
-| `forPage` `skip` `take` `reorder` `inRandomOrder` `oldest` `orderByDesc` `orderByRaw` `pluck` `value` `selectRaw` `leftJoin` | `EloquentBuilder` | دوال الـ query builder التي يمرّرها `EloquentBuilder` بنفس المعنى: الصفحات (`forPage` و`skip` و`take`)، والترتيب (`reorder` و`inRandomOrder` و`oldest` و`orderByDesc` و`orderByRaw`)، والقراءة (`pluck` و`value`)، و`selectRaw` و`leftJoin`. | انظر [Query builder](query-builder.md) |
+| `forPage` `skip` `take` `reorder` `inRandomOrder` `oldest` `orderByDesc` `orderByRaw` `pluck` `value` `selectRaw` `leftJoin` | `EloquentBuilder` | دوال الـ query builder التي يمرّرها `EloquentBuilder` بنفس المعنى: الصفحات (`forPage` و`skip` و`take`)، والترتيب (`reorder` و`inRandomOrder` و`oldest` و`orderByDesc` و`orderByRaw`)، والقراءة (`pluck`، وتقبل أيضًا عمود مفتاح على هيئة `pluck(column, key)` وتعيد خريطة، و`value`)، و`selectRaw` و`leftJoin`. | انظر [Query builder](query-builder.md) |
+| `whereBelongsTo` `orWhereBelongsTo` | `EloquentBuilder` | تصفّي الأبناء بحسب أب عبر علاقة `belongsTo`: افتراضيًا باسم صنف الأب بصيغة camel case، أو باسم العلاقة إن أُعطي ثانيًا. وتعطي المجموعة جملة `in` واحدة. وصيغة `or` تربط بـ OR. | `posts.query().whereBelongsTo(ada, "author")` |
+| `fillAndInsert` `fillAndInsertOrIgnore` `fillAndInsertGetId` | `EloquentBuilder` | تملأ كل صف كما تفعل `fill` دون حماية `fillable`، ثم تدرج الصفوف بعبارة واحدة (`fillAndInsertGetId` تدرج صفًا واحدًا وتعيد مفتاحه). | `Member.query.on(db).query().fillAndInsert(rows)` |
 | `whereKey` `whereKeyNot` | `EloquentBuilder` | تقيّد المفتاح الأساسي مسبوقًا بالجدول: `users.id = ?`، أو `in` لمجموعة (و`whereKeyNot` تستبعد). | `Post.query().whereKey(ids)` |
 | `whereGroup` `orWhereGroup` | `EloquentBuilder` | تضيف مجموعة شروط بين أقواس تُبنى على Eloquent builder لنفس النموذج (`orWhereGroup` تربطها بـ OR)، مثل `where(Closure)` في Laravel. | `q.whereGroup(g -> g.where("a", 1).orWhere("b", 2))` |
 | `whereInstantBetween` | `EloquentBuilder` | تضيف شرطًا للحظات في مدى نصف مفتوح. | `q.whereInstantBetween("created_at", from, to)` |

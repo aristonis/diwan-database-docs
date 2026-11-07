@@ -71,8 +71,10 @@ through `cursor()`. For large tables:
 
 ## Write-ahead logging
 
-`beginTransaction` on Android is exclusive. Without write-ahead logging, a long transaction blocks
-reads from other threads. Call `enableWriteAheadLogging()` in `onConfigure`, as above, and keep
+Diwan begins Android transactions with the exclusive `beginTransaction`, or with
+`beginTransactionNonExclusive` when the connection sets `transaction_mode` to `immediate` (see
+[Connections](connections.md)). Without write-ahead logging, a long transaction blocks reads from
+other threads. Call `enableWriteAheadLogging()` in `onConfigure`, as above, and keep
 transactions short.
 
 ## What needs a newer Android
@@ -90,9 +92,10 @@ in a transaction instead of `upsert`.
 
 ## Decimals and dates
 
-A `decimal` column has numeric affinity, so `10.10` reads as the double `10.1`. For exact money,
-use an integer column of minor units. Dates are stored as `yyyy-MM-dd HH:mm:ss` text, and an
-`Instant` as UTC text or whole microseconds, as on the desktop SQLite driver.
+A `decimal` column has numeric affinity, so `10.10` reads as the double `10.1`. For exact values,
+use a scaled integer column, or text with a fixed scale. Dates are stored as
+`yyyy-MM-dd HH:mm:ss` text, and an `Instant` as UTC text or whole microseconds, as on the desktop
+SQLite driver.
 
 ## Debug query log
 
