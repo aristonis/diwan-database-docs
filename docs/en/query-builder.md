@@ -179,6 +179,15 @@ query.table("archive").insertUsing(List.of("id", "total"),
         q -> q.from("orders").select("id", "total").where("status", "closed"));
 ```
 
+To empty several tables at once, call `truncate` on the factory:
+
+```java
+query.truncate(List.of("posts", "comments"));          // empty them, restart identities
+query.truncate(List.of("users"), true);                // cascade: also empty tables that refer to users
+```
+
+An empty list runs nothing; a null or blank name throws. On PostgreSQL this is one `truncate ... restart identity` statement, and `cascade` is the native one. On SQLite and Android the rows are deleted with foreign key checks out of the way, and `cascade` is emulated: every table that refers to the listed ones, directly or through other tables, is emptied too, children first, as PostgreSQL does; the emulation follows only tables that carry the connection prefix. The matching `sqlite_sequence` rows are reset, and a database that has no `sqlite_sequence` table is handled. Truncating one table with the builder is unchanged.
+
 An update or delete may join other tables. On SQLite that needs a table with a rowid. Writes need a
 table, not a subquery or raw `from`.
 

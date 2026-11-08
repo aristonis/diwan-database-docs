@@ -67,6 +67,14 @@ half-applied migration or a stray record. A failure stops the call with `Migrati
 Its `completed()` lists what finished and `phase()` says whether the migration or only its record
 failed. The migrator refuses to run inside a transaction you opened.
 
+### Start from scratch
+
+```java
+migrator.fresh();     // drop every view and table, then run all migrations
+```
+
+`fresh()` calls `schema.dropAllViews()` and `schema.dropAllTables()`, including the migrations table, then `run()`, and returns what `run()` returns. Use it for test and local databases, never for a deployed one. See [Schema builder](schema.md#list-and-drop-everything) for what is dropped, and [Testing](testing.md) for the test extension that calls it.
+
 ### Status and pretend
 
 ```java

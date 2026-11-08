@@ -153,6 +153,15 @@ query.table("archive").insertUsing(List.of("id", "total"),
         q -> q.from("orders").select("id", "total").where("status", "closed"));
 ```
 
+لتفريغ عدة جداول معًا استدعِ `truncate` على المصنع:
+
+```java
+query.truncate(List.of("posts", "comments"));          // empty them, restart identities
+query.truncate(List.of("users"), true);                // cascade: also empty tables that refer to users
+```
+
+القائمة الفارغة لا تنفذ شيئًا، والاسم null أو الفارغ يرمي استثناء. على PostgreSQL هي عبارة واحدة `truncate ... restart identity`، و`cascade` هو الأصلي فيها. على SQLite وAndroid تُحذف الصفوف مع تجاوز فحص المفاتيح الأجنبية، والـ `cascade` محاكى: كل جدول يشير إلى الجداول المذكورة، مباشرة أو عبر جداول أخرى، يُفرَّغ أيضًا، الأبناء أولًا، كما تفعل PostgreSQL، لكن المحاكاة تتبع فقط الجداول التي تحمل بادئة الاتصال (table prefix). وتُعاد ضبط صفوف `sqlite_sequence` المقابلة، وتُعالَج قاعدة لا تحتوي جدول `sqlite_sequence`. أما تفريغ جدول واحد بالـ builder فلم يتغير.
+
 يجوز أن يربط التحديث أو الحذف جداول أخرى. على SQLite هذا يتطلب جدولًا له rowid. الكتابة تحتاج جدولًا، لا استعلامًا فرعيًا ولا `from` خامًا.
 
 ### insertOrIgnore وupsert وupdateOrInsert

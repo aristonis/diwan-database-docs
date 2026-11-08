@@ -172,6 +172,24 @@ for (ForeignKeyInfo key : schema.foreignKeys("posts")) {
 }
 ```
 
+### List and drop everything
+
+```java
+List<TableInfo> tables = schema.getTables();        // name and schema, ordered by schema, then name
+List<String> names = schema.getTableListing();      // names only
+List<ViewInfo> views = schema.getViews();
+
+schema.dropAllViews();
+schema.dropAllTables();
+```
+
+`TableInfo` and `ViewInfo` are immutable values with `name()` and `schema()`. Internal tables are not listed: `sqlite_` tables, `android_metadata` and FTS shadow tables on SQLite and Android, and `spatial_ref_sys` on PostgreSQL. The listing returns real table names, including the connection's table prefix, as Laravel does. On SQLite older than 3.37, FTS3-5 and R-Tree shadow tables are hidden too.
+
+- **PostgreSQL:** the tables of the schemas in `search_path`, dropped with one `drop table ... cascade` statement. `spatial_ref_sys` is kept. With nothing to drop, no statement runs. Types, sequences and functions are not dropped.
+- **SQLite and Android:** each table is dropped, children first, so foreign keys do not block the drop. FTS shadow tables are skipped, and `android_metadata` is kept.
+
+`Migrator.fresh()` uses these calls: see [Migrations](migrations.md#start-from-scratch).
+
 ## Preview the SQL
 
 ```java
