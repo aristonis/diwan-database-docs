@@ -51,6 +51,7 @@ Schema cache = db.schema("cache");       // built on first use
 | `prefix` | بادئة الجداول، فارغة افتراضيًا. |
 | `strict_transactions` | `true` افتراضيًا. |
 | `sqlite`: `foreign_keys` و`busy_timeout` و`transaction_mode` | المفاتيح الأجنبية مفعّلة افتراضيًا. و`busy_timeout` هو مدة انتظار الجلسة للقفل بالميلي ثانية. و`transaction_mode` قيمته `deferred` (الافتراضية) أو `immediate` أو `exclusive`. انظر [خيارات SQLite](#sqlite). |
+| `lock_wait` | مدة انتظار الجملة للقفل: `5s` أو `500ms` أو ميلي ثوانٍ بأرقام فقط. انظر [انتظار القفل](#lock-wait). |
 | `pgsql`: `sslmode` و`search_path` (أو `schema`) | تُمرَّر إلى العنوان باسم `sslmode` و`currentSchema`. |
 
 أي مفتاح آخر يُحفظ كخيار نصي للـ connector. ويمكن أن تقرأ القيمة من البيئة: `${DB_PASSWORD}` يفشل إن لم يوجد، و`${DB_HOST:-localhost}` يرجع إلى قيمة بديلة، و`$${X}` يبقى نصًا حرفيًا. والإعداد الخاطئ يرمي `DatabaseConfigException`، وهو يسمّي الاتصال والمفتاح ولا يذكر القيمة أبدًا.
@@ -82,6 +83,28 @@ DatabaseManager db = DatabaseManager.builder()
         .connector(AndroidConnector.of(() -> helper, SQLiteQuery::of, SQLiteSchema::of))
         .build();
 ```
+
+### انتظار القفل (lock wait)
+
+يحدد `lock_wait` كم تنتظر الجلسة القفل قبل أن تستسلم. اكتبه `5s` أو `500ms` أو ميلي ثوانٍ بأرقام فقط (`5000`).
+
+```properties
+database.connections.main.driver=pgsql
+database.connections.main.lock_wait=5s
+```
+
+- PostgreSQL: يُطبَّق عند اتصال الجلسة، كخيار بدء pgjdbc ‏`-c lock_timeout`. وقيمة `options` التي تضعها أنت تبقى، ويُضاف إليها `lock_wait`.
+- SQLite: هو الإعداد نفسه `busy_timeout`. وضبط الاثنين بقيمتين مختلفتين خطأ.
+- Android: يُطبَّق بـ `PRAGMA busy_timeout`.
+
+الانتظار الذي تنتهي مدته يرمي `QueryException` تعيد `isConcurrencyFailure()` فيه `true`.
+
+الحدود:
+
+- على PostgreSQL يحدّ هذا الخيار كل انتظار قفل في الجلسة، بما فيه DDL الذي يشغّله الـ migration. أما قفل الـ migration نفسه فمستثنى. اتركه بلا ضبط على اتصال يشغّل migrations طويلة، أو أعطِ الـ migration اتصالًا خاصًا.
+- قد يرفض PgBouncer في وضع transaction pooling معامل البدء `options`. استعمل هناك `TransactionOptions.lockWait(...)` (انظر [انتظار القفل لكل transaction](#lock-wait-per-transaction)).
+
+ترتيب الأسبقية، من الأقوى: الجملة (`lock(strength, Duration)`)، ثم خيار الـ transaction، ثم مفتاح الإعداد هذا، ثم الافتراضي في قاعدة البيانات.
 
 ### دورة الحياة
 
@@ -170,6 +193,26 @@ db.transaction(tx -> transfer(tx), 3);
 ```
 
 عند deadlock (تعانق) أو فشل serialization (تحويل النموذج إلى map أو JSON) يُعاد تشغيل الـ callback كله، حتى 3 مرات. والآثار الخارجية داخل الـ callback، كاستدعاء HTTP، تُعاد أيضًا. وفشل `COMMIT` لا يُعاد أبدًا لأنه قد يكون نجح. المعاملة الخارجية وحدها تعيد المحاولة، والمتداخلة ترمي الاستثناء فورًا. وقيمة `attempts` أقل من 1 ترمي `IllegalArgumentException`.
+
+### انتظار القفل لكل transaction (lock wait per transaction)
+
+```java
+import java.time.Duration;
+import org.aristonis.diwan.database.TransactionOptions;
+
+db.transaction(tx -> transfer(tx), TransactionOptions.lockWait(Duration.ofSeconds(2)));
+
+db.transaction(tx -> transfer(tx),
+        TransactionOptions.lockWait(Duration.ofMillis(500)).withAttempts(3));
+```
+
+تنتظر الـ transaction أي قفل هذه المدة كحد أقصى. على PostgreSQL ينفّذ Diwan ‏`SET LOCAL lock_timeout` بعد `BEGIN` مباشرة، فينتهي أثره بانتهاء الـ transaction. وعلى SQLite وAndroid يضبط `busy_timeout` قبل `BEGIN` ويعيد القيمة القديمة بعد الـ commit أو الفشل.
+
+- الانتظار الذي تنتهي مدته يرمي `QueryException` تعيد `isConcurrencyFailure()` فيه `true`، فتعيد `attempts` تشغيل الـ callback.
+- `TransactionOptions.attempts(n)` مثل `transaction(callback, n)`. و`Connection.transaction(callback, int)` أصبحت دالة افتراضية (default) تستدعيها.
+- الـ transaction الخارجية وحدها تأخذ مدة انتظار. و`transaction(...)` متداخلة مع `lockWait` ترمي `IllegalStateException`.
+- الـ transaction التي فُتحت خارج Diwan (transaction تملكها حاوية) لا تأخذ مدة انتظار.
+- يجب أن تكون المدة موجبة وبحدّ أقصى `Integer.MAX_VALUE` ميلي ثانية. والجزء الأصغر من ميلي ثانية يُقرَّب إلى 1 ms.
 
 ### afterCommit و afterRollback
 

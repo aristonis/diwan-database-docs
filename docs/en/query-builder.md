@@ -153,6 +153,20 @@ Optional<Object> biggest = query.table("orders").max("total");
 Optional<Number> mean = query.table("orders").avg("total");
 ```
 
+### Exact decimal sums
+
+`sum` returns a `Number`. For money, use `sumDecimal`, which returns a `BigDecimal` at the scale you give:
+
+```java
+BigDecimal paid = query.table("payments").sumDecimal("amount", 2);                       // HALF_UP
+BigDecimal net = query.table("payments").sumDecimal("amount", 2, RoundingMode.HALF_EVEN);
+```
+
+- On PostgreSQL the sum is exact.
+- On SQLite `SUM` is a double that Diwan rounds back to the scale. That is fine for normal totals and approximate for very large ones (millions of large values).
+- No rows gives zero at the scale (`0.00`).
+- The Eloquent builder has the same methods through `query()`.
+
 ## Insert, update and delete
 
 ```java
@@ -216,6 +230,23 @@ connection.transaction(c -> {
   exclusion is safe only on PostgreSQL.
 - Aggregates, `exists` and the count behind `paginate` leave the lock out. A union with a lock is
   refused.
+
+### Timed lock
+
+```java
+connection.transaction(c -> {
+    var row = query.on(c).table("accounts").where("id", 1)
+            .lock(LockStrength.UPDATE, Duration.ofSeconds(2)).first();
+    return row;
+});
+```
+
+`lock(strength, Duration)` waits at most that long for the row lock, then throws a `QueryException` with `isConcurrencyFailure()` true.
+
+- PostgreSQL only. It needs an open transaction and throws `IllegalStateException` outside one. SQLite and Android throw `UnsupportedOperationException`.
+- It applies to that statement only. Diwan restores the earlier `lock_timeout` after the statement.
+- On a locking cursor the limit holds only while the cursor opens. Later fetches are not bounded.
+- A statement limit wins over a transaction `lockWait` and the `lock_wait` configuration key. See [Connections](connections.md#lock-wait).
 
 ## Pagination
 

@@ -127,6 +127,20 @@ Optional<Object> biggest = query.table("orders").max("total");
 Optional<Number> mean = query.table("orders").avg("total");
 ```
 
+### مجاميع decimal الدقيقة
+
+ترجع `sum` قيمة `Number`. وللمال استعمل `sumDecimal` التي ترجع `BigDecimal` بالـ scale الذي تعطيه:
+
+```java
+BigDecimal paid = query.table("payments").sumDecimal("amount", 2);                       // HALF_UP
+BigDecimal net = query.table("payments").sumDecimal("amount", 2, RoundingMode.HALF_EVEN);
+```
+
+- على PostgreSQL المجموع دقيق.
+- على SQLite تكون `SUM` عددًا من نوع double ويقرّبه Diwan إلى الـ scale. وهذا مناسب للمجاميع العادية وتقريبي للكبيرة جدًا (ملايين القيم الكبيرة).
+- غياب الصفوف يعطي صفرًا بالـ scale (`0.00`).
+- للـ Eloquent builder الدوال نفسها عبر `query()`.
+
 ## الإدراج والتحديث والحذف
 
 ```java
@@ -175,6 +189,23 @@ connection.transaction(c -> {
 - يحتاج select المقفول على PostgreSQL إلى transaction، ويرمي `IllegalStateException` خارجها. نفّذ الاستعلام على الاتصال الذي يعطيك إياه callback (دالة يستدعيها النظام) الدالة `transaction(...)`.
 - SQLite لا تدعم أقفال الصفوف. كل قوة قفل (`UPDATE` و`SHARE` و`NO_KEY_UPDATE` و`KEY_SHARE`) لا تكتب شيئًا هناك: SQLite تقفل قاعدة البيانات كلها، وعند أول كتابة في الـ transaction فقط. و`NOWAIT` و`SKIP_LOCKED` ترميان `UnsupportedOperationException`. الكود الذي يعتمد على القفل للاستبعاد المتبادل آمن على PostgreSQL فقط.
 - الدوال التجميعية و`exists` وعدّاد `paginate` تهمل القفل. والـ union مع قفل مرفوض.
+
+### قفل بمدة (timed lock)
+
+```java
+connection.transaction(c -> {
+    var row = query.on(c).table("accounts").where("id", 1)
+            .lock(LockStrength.UPDATE, Duration.ofSeconds(2)).first();
+    return row;
+});
+```
+
+تنتظر `lock(strength, Duration)` قفل الصف هذه المدة كحد أقصى، ثم ترمي `QueryException` تعيد `isConcurrencyFailure()` فيه `true`.
+
+- على PostgreSQL فقط. تحتاج إلى transaction مفتوحة وترمي `IllegalStateException` خارجها. وSQLite وAndroid ترميان `UnsupportedOperationException`.
+- تسري على هذه الجملة وحدها. يعيد Diwan قيمة `lock_timeout` السابقة بعد الجملة.
+- على cursor مقفول يسري الحد أثناء فتح الـ cursor فقط. والجلبات اللاحقة بلا حد.
+- حد الجملة أقوى من `lockWait` للـ transaction ومن مفتاح الإعداد `lock_wait`. انظر [الاتصالات](connections.md#lock-wait).
 
 ## Pagination (ترقيم الصفحات)
 

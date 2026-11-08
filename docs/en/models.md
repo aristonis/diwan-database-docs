@@ -172,6 +172,21 @@ Reading returns a `BigDecimal` at the declared scale, so `12.5` comes back as `1
 | `FLOOR` | Rounds toward negative infinity. | `-10.121` | `-10.13` |
 | `CEILING` | Rounds toward positive infinity. | `-10.129` | `-10.12` |
 
+### The 15-digit rule on SQLite
+
+SQLite keeps a decimal column as a double, which holds about 15 significant digits. The strict cast
+therefore refuses a value with more than 15 significant digits on SQLite. The `InvalidCastException`
+names the column, never the value. PostgreSQL stores exact decimals and is unchanged.
+
+This is a behavior change for upgraders: a value that was accepted before and carries more than 15
+digits now throws. To keep longer exact values on SQLite, use a text column with
+`Casts.decimalText(precision, scale)`, which keeps the strict precision and scale rules but skips the 15-digit limit:
+
+```java
+// migration: table.string("rate")   -- text column, exact digits
+.put("rate", Casts.decimalText(30, 15))
+```
+
 `Casts.decimal(scale)` (`decimal:2`) is unchanged: it has no precision limit and rounds half up.
 Use the strict form for money, so that a stored value always fits its column.
 
