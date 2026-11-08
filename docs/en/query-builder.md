@@ -44,9 +44,9 @@ Optional<Object> email = query.table("users").where("id", 7).value("email");
 boolean any = query.table("orders").where("status", "open").exists();
 ```
 
-Rows are `Map<String, Object>`. Other filters include `whereBetween`, `whereLike`, `whereColumn`,
-`whereAny`, `whereAll`, `whereNone`, grouped conditions with `where(q -> ...)`, and `groupBy` with
-`having`. `toSql()` and `getBindings()` show what a builder will run.
+Rows are `Map<String, Object>`. Other filters include `whereBetween`, `whereLike`,
+`whereContains` (see below), `whereColumn`, `whereAny`, `whereAll`, `whereNone`, grouped conditions
+with `where(q -> ...)`, and `groupBy` with `having`. `toSql()` and `getBindings()` show what a builder will run.
 
 `where(column, operator, value)` accepts the builder's operators (`=`, `<`, `>`, `<=`, `>=`, `<>`,
 `!=`, `like`, `not like`, `ilike` and others) plus the grammar's own. An unknown operator is taken
@@ -66,6 +66,61 @@ query.table("alarms").where("task_id", taskId).whereNotIn("id", keep).delete();
 
 Date wheres (`whereDate`, `whereMonth` and the others) are for text date columns. On an instant
 column use `whereInstantBetween(column, from, to)`.
+
+## Searching user input
+
+`whereContains`, `whereStartsWith` and `whereEndsWith` find text that a user typed. They always
+treat the text as literal: `%`, `_` and `!` match themselves, never as wildcards.
+
+```java
+List<Map<String, Object>> rows = query.table("users")
+        .whereContains("name", userInput)            // the name holds the input, as typed
+        .orWhereStartsWith("email", prefix)
+        .whereNotEndsWith("email", ".test", true)    // case-sensitive
+        .get();
+```
+
+Each method takes `(column, value)` or `(column, value, caseSensitive)`. The flag defaults to
+`false`, as on `whereLike`. Each anchor has four forms: `whereContains`, `orWhereContains`,
+`whereNotContains` and `orWhereNotContains`, and the same for `StartsWith` and `EndsWith`.
+
+- A `null` value throws `IllegalArgumentException`.
+- An empty value matches every row whose column is not null, because every text starts and ends
+  with the empty text. A null column never matches.
+
+The value is bound as one parameter. Diwan escapes it first, with `!` as the escape character:
+`!` becomes `!!`, then `%` and `_` gain a `!` in front. The SQL depends on the database:
+
+| Database | Default (`caseSensitive` false) | `caseSensitive` true |
+|---|---|---|
+| PostgreSQL | `col::text ilike ? escape '!'` | `col::text like ? escape '!'` |
+| SQLite | `col like ? escape '!'` | `col glob ?` |
+
+SQLite's GLOB has no escape character, so the case-sensitive form wraps `*`, `?` and `[` in
+brackets, which makes each one match itself.
+
+Notes:
+
+- SQLite's default match folds case for ASCII letters only, so `É` does not match `é` there.
+- SQLite does not use an index for `LIKE` with an `ESCAPE` clause. A case-sensitive
+  `whereStartsWith` uses `GLOB` instead, which can use an index on a column with the `BINARY`
+  collation.
+- On PostgreSQL, a case-sensitive `whereStartsWith` can use a `text_pattern_ops` index on a text
+  column. `ilike` cannot use a plain B-tree index; on a large table, a `pg_trgm` GIN index
+  (`create index ... using gin (col gin_trgm_ops)`) serves contains, starts-with and ends-with in
+  both case modes. The column is compared as `col::text`, so an index on a non-text column does not
+  match.
+
+### whereLike stays raw
+
+`whereLike` works as in Laravel: the pattern is raw LIKE syntax, so `%` and `_` are wildcards and
+nothing is escaped. Use it for patterns that you write yourself. Do not pass user input to
+`whereLike`, not even with `%` added around it. Use `whereContains`, `whereStartsWith` or
+`whereEndsWith` for that.
+
+```java
+query.table("users").whereLike("name", "A%");   // names that start with A, as written
+```
 
 ## Joins, subqueries and unions
 
@@ -289,6 +344,7 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `orWhereColumn` | `Builder` | Compares two columns for equality (`orWhereColumn` joins with OR). | `q.orWhereColumn("a", "b")` |
 | `whereNotExists` `orWhereExists` `orWhereNotExists` | `Builder` | Subquery EXISTS and NOT EXISTS conditions, with the `or` forms. | `q.whereNotExists(sub -> ...)` |
 | `whereNotLike` `orWhereLike` `orWhereNotLike` | `Builder` | Case-insensitive LIKE and NOT LIKE conditions, with the `or` forms. | `q.whereNotLike("name", "a%")` |
+| `whereContains` `whereStartsWith` `whereEndsWith`, with `or`, `Not` and `orNot` forms | `Builder` | Text search for user input, with the value always literal and an optional `caseSensitive` flag. | `q.whereContains("name", input)` |
 | `orWhereAll` `orWhereAny` `orWhereNone` | `Builder` | `or` groups over several columns: every column equals the value (`All`), at least one (`Any`), or none (`None`). | `q.orWhereAny(cols, "x")` |
 | `whereDay` `whereYear` `whereTime` `orWhereDate` `orWhereDay` `orWhereMonth` `orWhereYear` `orWhereTime` | `Builder` | Conditions on one part of a text date or time column: day, month, year or time (and the date part with `orWhereDate`), compared with `=`. The `or` forms join with OR. | `q.whereYear("created_at", 2026)` |
 | `whereIntegerInRaw` | `Builder` | A column is in a list of integers written into the SQL, not bound; an empty list matches no row. | `q.whereIntegerInRaw("id", List.of(1, 2))` |

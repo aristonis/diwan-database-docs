@@ -47,7 +47,7 @@ try {
 }
 ```
 
-المشغّل (driver) هو من يصنّف الفشل. والتصنيفات هي `DriverFailureKind.UNIQUE_VIOLATION` و`FOREIGN_KEY_VIOLATION` و`CONCURRENCY` و`CANCELLED` و`CONNECTION_LOST` و`COMMIT_OUTCOME_UNKNOWN`. إذا فشل `COMMIT` بسبب انقطاع الاتصال فقد يكون التثبيت تمّ. افحص قاعدة البيانات قبل أن تعيد المحاولة أو تتراجع.
+المشغّل (driver) هو من يصنّف الفشل. والتصنيفات هي `DriverFailureKind.UNIQUE_VIOLATION` و`FOREIGN_KEY_VIOLATION` و`CHECK_VIOLATION` و`NOT_NULL_VIOLATION` و`CONCURRENCY` و`CANCELLED` و`CONNECTION_LOST` و`COMMIT_OUTCOME_UNKNOWN`. إذا فشل `COMMIT` بسبب انقطاع الاتصال فقد يكون التثبيت تمّ. افحص قاعدة البيانات قبل أن تعيد المحاولة أو تتراجع.
 
 الـ `getCause()` في `QueryException` هو `DriverException`. ورسالته بصيغة ثابتة:
 
@@ -55,7 +55,7 @@ try {
 Database failure (SQL state unknown, vendor code 5): concurrency, SQLITE_BUSY
 ```
 
-الجزء الأول يظهر دائمًا. وبعد `: ` تأتي التصنيفات التي عرفها المشغّل بأحرف صغيرة، ثم اسم رمز نتيجة SQLite إذا كان Diwan يعرف الرمز. وإن لم يوجد تصنيف ولا رمز معروف فالرسالة هي الجزء الأول فقط. ولا تحمل الرسالة قيمًا ولا نص قاعدة البيانات أبدًا.
+الجزء الأول يظهر دائمًا. وبعد `: ` تأتي التصنيفات التي عرفها المشغّل بأحرف صغيرة، ثم اسم رمز نتيجة SQLite إذا كان Diwan يعرف الرمز. وإن لم يوجد تصنيف ولا رمز معروف فالرسالة هي الجزء الأول فقط. ولا تحمل الرسالة قيمًا ولا نص قاعدة البيانات أبدًا. ورمز Diwan الذي تنتهي به الرسالة، وهو موصوف أدناه، لا يحمل إلا أسماء القيود والأعمدة.
 
 ## ما لا تحتويه الرسائل أبدًا
 
@@ -74,6 +74,62 @@ SQL: insert into users (email) values (?) (Connection: main, SQL state 23505, ve
 - كلمات المرور لا تظهر أبدًا. `ConnectionConfig` تطبع `***`، و`DatabaseConfigException` تذكر المفتاح ولا تذكر القيمة.
 - الأحداث تحمل القيم الخام. استدعِ `redacted()` على `QueryExecuted` أو `QueryFailed` قبل أن تسجّله.
 - `QueryException` المُسلسلة (serialized) تحذف الـ bindings المخفية.
+
+## رموز أخطاء Diwan
+
+تعطي `DriverException.error()` الخطأ الموحّد للفشل: رمزًا ثابتًا، واسم القيد (constraint) أو الفهرس، والأعمدة المعنية. من `QueryException` تصل إلى استثناء المشغّل بـ `getCause()`:
+
+```java
+try {
+    db.insert("insert into users (email) values (?)", email);
+} catch (QueryException e) {
+    DiwanError error = ((DriverException) e.getCause()).error();
+    switch (error.code()) {
+        case "DWN-CST-0001":
+            return "That email is already registered.";
+        case "DWN-TXN-0001":
+            return "Please try again.";
+        default:
+            throw e;
+    }
+}
+```
+
+| الرمز | التصنيف | المعنى |
+|---|---|---|
+| `DWN-CST-0001` | `UNIQUE_VIOLATION` | كُسر مفتاح unique أو مفتاح أساسي. |
+| `DWN-CST-0002` | `FOREIGN_KEY_VIOLATION` | كُسر مفتاح أجنبي. |
+| `DWN-CST-0003` | `CHECK_VIOLATION` | كُسر قيد check. |
+| `DWN-CST-0004` | `NOT_NULL_VIOLATION` | تلقّى عمود NOT NULL قيمة null. |
+| `DWN-TXN-0001` | `CONCURRENCY` | deadlock أو فشل serialization أو قاعدة بيانات مشغولة. أعد تنفيذ العمل. |
+| `DWN-TXN-0002` | لا يوجد | محجوز لفشل انتظار القفل. لا يُبلّغ عنه أي فشل حتى الآن. |
+| `DWN-TXN-0003` | `COMMIT_OUTCOME_UNKNOWN` | فشل commit بسبب انقطاع الاتصال، فقد يكون تمّ. افحص قاعدة البيانات. |
+| `DWN-CNX-0001` | `CONNECTION_LOST` | انقطع الاتصال بقاعدة البيانات. |
+| `DWN-QRY-0001` | `CANCELLED` | أُلغيت الجملة. |
+| `DWN-UNK-0000` | لا يوجد | لم يتعرّف المشغّل على الفشل. |
+
+قد يحمل الفشل أكثر من تصنيف. ورمزه هو أول صف في هذا الجدول يملك الفشل تصنيفه، فالجدول مرتّب بالأسبقية من الأعلى إلى الأسفل. مثلًا، فشل يحمل `CONCURRENCY` و`CONNECTION_LOST` معًا يبلّغ `DWN-TXN-0001`.
+
+الرموز جزء من الـ API العام. الرمز لا يغيّر معناه أبدًا، ولا يُعاد ترقيمه ولا يُعاد استعماله. الفشل الجديد يأخذ رمزًا جديدًا، والمشغّل الجديد يربط أخطاءه هو فقط بالرموز الموجودة. اكتب الشيفرة اعتمادًا على `code()`، لا على نص الرسالة ولا على رمز المورّد (vendor code).
+
+`key()` هو اسم القيد أو الفهرس، و`columns()` تسرد الأعمدة المعنية. كلاهما فارغ عندما لا يستطيع المشغّل إعطاءه. وهما يحملان أسماء المخطط، ولا يحملان قيم الصفوف أبدًا. وهذا ما يعطيه كل مشغّل:
+
+| الفشل | PostgreSQL | SQLite |
+|---|---|---|
+| Unique | المفتاح: اسم القيد. الأعمدة: لا شيء، لأن الخادم لا يسمّيها في هذا الخطأ. | المفتاح: لا شيء. الأعمدة: أعمدة الفهرس. |
+| Foreign key | المفتاح: اسم القيد. الأعمدة: لا شيء. | لا شيء. |
+| Check | المفتاح: اسم القيد. الأعمدة: لا شيء. | المفتاح: اسم القيد. في SQLite الأقدم، مثل التي في Android 9، يبلّغ check بلا اسم عن نص تعبيره كمفتاح. سمِّ قيود check عندك. |
+| Not null | المفتاح: لا شيء. الأعمدة: العمود. | الأعمدة: العمود. |
+
+يعطي PostgreSQL هذه القيم من حقول الخطأ المنظّمة في الخادم، لا من نص الرسالة، فلا تعتمد على لغة الخادم.
+
+تنتهي رسالة `DriverException` ورسالة `QueryException` بالرمز، ثم كلمات تصنيفه، ثم المفتاح والأعمدة عندما تكون معروفة:
+
+```text
+... [DWN-CST-0001 unique violation: users_email_unique (email)]
+```
+
+الصيغة هي `[<code> <kind words>[: <key>][ (<columns>)]]`. بلا مفتاح يُحذف جزء النقطتين، وبلا أعمدة تُحذف الأقواس. والفشل الذي لا يتعرّف عليه Diwan ينتهي بـ `[DWN-UNK-0000]`. أما الدوال `sqlState()` و`vendorCode()` و`kinds()` و`databaseMessage()` فلم تتغيّر.
 
 ## الاستثناءات حسب المجال
 

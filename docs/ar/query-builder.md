@@ -43,7 +43,7 @@ Optional<Object> email = query.table("users").where("id", 7).value("email");
 boolean any = query.table("orders").where("status", "open").exists();
 ```
 
-الصفوف من نوع `Map<String, Object>`. من المرشحات الأخرى `whereBetween` و`whereLike` و`whereColumn` و`whereAny` و`whereAll` و`whereNone`، والشروط المجمعة بـ `where(q -> ...)`، و`groupBy` مع `having`. الدالتان `toSql()` و`getBindings()` تعرضان ما سينفذه الـ builder.
+الصفوف من نوع `Map<String, Object>`. من المرشحات الأخرى `whereBetween` و`whereLike` و`whereContains` (انظر أدناه) و`whereColumn` و`whereAny` و`whereAll` و`whereNone`، والشروط المجمعة بـ `where(q -> ...)`، و`groupBy` مع `having`. الدالتان `toSql()` و`getBindings()` تعرضان ما سينفذه الـ builder.
 
 الدالة `where(column, operator, value)` تقبل عوامل المقارنة (operators) في الـ builder (`=` و`<` و`>` و`<=` و`>=` و`<>` و`!=` و`like` و`not like` و`ilike` وغيرها) وعوامل الـ grammar (قواعد توليد SQL) الخاصة بها. العامل المجهول يُعامل كأنه القيمة، فـ `where("total", "=>", 10)` يقارن `total` بالنص `=>`، كما في Laravel.
 
@@ -57,6 +57,46 @@ query.table("alarms").where("task_id", taskId).whereNotIn("id", keep).delete();
 ```
 
 دوال التاريخ (`whereDate` و`whereMonth` وغيرهما) مخصصة لأعمدة التاريخ النصية. مع أعمدة الـ instant (لحظة زمنية) استخدم `whereInstantBetween(column, from, to)`.
+
+## البحث في مدخلات المستخدم
+
+الدوال `whereContains` و`whereStartsWith` و`whereEndsWith` تجد نصًا كتبه المستخدم. وهي تعامل النص دائمًا كما هو حرفيًا: الرموز `%` و`_` و`!` تطابق نفسها، ولا تعمل أبدًا كرموز بدل (wildcards).
+
+```java
+List<Map<String, Object>> rows = query.table("users")
+        .whereContains("name", userInput)            // the name holds the input, as typed
+        .orWhereStartsWith("email", prefix)
+        .whereNotEndsWith("email", ".test", true)    // case-sensitive
+        .get();
+```
+
+تأخذ كل دالة `(column, value)` أو `(column, value, caseSensitive)`. والقيمة الافتراضية للعلم `false`، كما في `whereLike`. ولكل مرساة أربع صيغ: `whereContains` و`orWhereContains` و`whereNotContains` و`orWhereNotContains`، وكذلك `StartsWith` و`EndsWith`.
+
+- القيمة `null` ترمي `IllegalArgumentException`.
+- القيمة الفارغة تطابق كل صف عموده ليس null، لأن كل نص يبدأ وينتهي بالنص الفارغ. والعمود null لا يطابق أبدًا.
+
+تُربط القيمة معاملًا واحدًا. ويهرّبها Diwan أولًا، مع `!` كحرف تهريب: يصير `!` إلى `!!`، ثم يُضاف `!` قبل `%` و`_`. ويعتمد الـ SQL على قاعدة البيانات:
+
+| قاعدة البيانات | الافتراضي (`caseSensitive` false) | `caseSensitive` true |
+|---|---|---|
+| PostgreSQL | `col::text ilike ? escape '!'` | `col::text like ? escape '!'` |
+| SQLite | `col like ? escape '!'` | `col glob ?` |
+
+الـ GLOB في SQLite بلا حرف تهريب، فالصيغة الحساسة لحالة الأحرف تضع `*` و`?` و`[` بين أقواس مربعة، فيطابق كلٌّ منها نفسه.
+
+ملاحظات:
+
+- المطابقة الافتراضية في SQLite تتجاهل حالة الأحرف ASCII فقط، فلا يطابق `É` الحرف `é` هناك.
+- لا تستعمل SQLite فهرسًا مع `LIKE` ومعها جملة `ESCAPE`. أما `whereStartsWith` الحساسة لحالة الأحرف فتستعمل `GLOB` بدلها، ويمكنها استعمال فهرس على عمود بترتيب (collation) `BINARY`.
+- في PostgreSQL يمكن لـ `whereStartsWith` الحساسة لحالة الأحرف استعمال فهرس `text_pattern_ops` على عمود نصي. أما `ilike` فلا يمكنها استعمال فهرس B-tree عادي؛ وفي جدول كبير يخدم فهرس GIN من `pg_trgm` (`create index ... using gin (col gin_trgm_ops)`) البحث بالاحتواء والبداية والنهاية في الحالتين. ويُقارَن العمود بصيغة `col::text`، لذلك لا يطابق فهرسٌ على عمود غير نصي.
+
+### whereLike تبقى خامًا
+
+تعمل `whereLike` كما في Laravel: النمط صيغة LIKE خام، فـ `%` و`_` رموز بدل ولا يُهرَّب شيء. استعملها للأنماط التي تكتبها بنفسك. لا تمرّر مدخلات المستخدم إلى `whereLike`، حتى مع إضافة `%` حولها. استعمل لذلك `whereContains` أو `whereStartsWith` أو `whereEndsWith`.
+
+```java
+query.table("users").whereLike("name", "A%");   // names that start with A, as written
+```
 
 ## الربط والاستعلامات الفرعية والاتحاد
 
@@ -252,6 +292,7 @@ query.table("orders").whereRaw("total > ? and status = ?", List.of(100, status))
 | `orWhereColumn` | `Builder` | تقارن عمودين بالمساواة (تربطها `orWhereColumn` بـ OR). | `q.orWhereColumn("a", "b")` |
 | `whereNotExists` `orWhereExists` `orWhereNotExists` | `Builder` | شروط EXISTS وNOT EXISTS على استعلام فرعي، مع صيغ `or`. | `q.whereNotExists(sub -> ...)` |
 | `whereNotLike` `orWhereLike` `orWhereNotLike` | `Builder` | شروط LIKE وNOT LIKE غير حساسة لحالة الأحرف، مع صيغ `or`. | `q.whereNotLike("name", "a%")` |
+| `whereContains` `whereStartsWith` `whereEndsWith`، مع صيغ `or` و`Not` و`orNot` | `Builder` | بحث نصي لمدخلات المستخدم، تبقى فيه القيمة حرفية دائمًا، مع علم `caseSensitive` اختياري. | `q.whereContains("name", input)` |
 | `orWhereAll` `orWhereAny` `orWhereNone` | `Builder` | مجموعات `or` على عدة أعمدة: كل الأعمدة تساوي القيمة (`All`)، أو واحد منها على الأقل (`Any`)، أو لا واحد (`None`). | `q.orWhereAny(cols, "x")` |
 | `whereDay` `whereYear` `whereTime` `orWhereDate` `orWhereDay` `orWhereMonth` `orWhereYear` `orWhereTime` | `Builder` | شروط على جزء من عمود تاريخ أو وقت نصي: اليوم أو الشهر أو السنة أو الوقت (والتاريخ في `orWhereDate`)، بالمساواة. صيغ `or` تربط بـ OR. | `q.whereYear("created_at", 2026)` |
 | `whereIntegerInRaw` | `Builder` | عمود ضمن قائمة أعداد صحيحة تُكتب داخل الـ SQL ولا تُربط؛ والقائمة الفارغة لا تطابق أي صف. | `q.whereIntegerInRaw("id", List.of(1, 2))` |
