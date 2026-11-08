@@ -51,6 +51,7 @@ All keys start with `database.`. A connection is `database.connections.<name>.<k
 | `prefix` | Table prefix, empty by default. |
 | `strict_transactions` | `true` by default. |
 | `sqlite`: `foreign_keys`, `busy_timeout`, `transaction_mode` | Foreign keys on by default. `busy_timeout` is how long a session waits for a lock, in milliseconds. `transaction_mode` is `deferred` (the default), `immediate` or `exclusive`. See [SQLite options](#sqlite-options). |
+| `lock_wait` | How long a statement waits for a lock: `5s`, `500ms` or milliseconds as digits. See [Lock wait](#lock-wait). |
 | `pgsql`: `sslmode`, `search_path` (or `schema`) | Passed to the URL as `sslmode` and `currentSchema`. |
 
 Any other key is kept as a string option for the connector. A value can read the environment: `${DB_PASSWORD}` fails if unset, `${DB_HOST:-localhost}` falls back, `$${X}` stays literal. A bad configuration throws `DatabaseConfigException`, which names the connection and key but never the value.
@@ -94,6 +95,34 @@ DatabaseManager db = DatabaseManager.builder()
         .connector(AndroidConnector.of(() -> helper, SQLiteQuery::of, SQLiteSchema::of))
         .build();
 ```
+
+### Lock wait
+
+`lock_wait` sets how long a session waits for a lock before it gives up. Write it as `5s`, `500ms`
+or plain milliseconds (`5000`).
+
+```properties
+database.connections.main.driver=pgsql
+database.connections.main.lock_wait=5s
+```
+
+- PostgreSQL: applied when the session connects, as the pgjdbc startup option `-c lock_timeout`.
+  Your own `options` value is kept and `lock_wait` is added to it.
+- SQLite: the same setting as `busy_timeout`. Setting both to different values is an error.
+- Android: applied with `PRAGMA busy_timeout`.
+
+A wait that runs out throws `QueryException` with `isConcurrencyFailure()` true.
+
+Limits:
+
+- On PostgreSQL the option bounds every lock wait of the session, including the DDL a migration
+  runs. The migration lock itself is exempt. Leave it unset on a connection that runs long
+  migrations, or give the migration its own connection.
+- PgBouncer in transaction pooling mode may reject the `options` startup parameter. Use
+  `TransactionOptions.lockWait(...)` there (see [Lock wait per transaction](#lock-wait-per-transaction)).
+
+The order of precedence, strongest first: a statement (`lock(strength, Duration)`), a transaction
+option, this configuration key, the database default.
 
 ### Lifecycle
 
@@ -182,6 +211,32 @@ db.transaction(tx -> transfer(tx), 3);
 ```
 
 On a deadlock or serialization failure, the whole callback runs again, up to 3 times. Outside effects in the callback, such as an HTTP call, run again too. A failed `COMMIT` is never retried, because it may have landed. Only the outermost transaction retries; a nested one rethrows at once. `attempts` below 1 throws `IllegalArgumentException`.
+
+### Lock wait per transaction
+
+```java
+import java.time.Duration;
+import org.aristonis.diwan.database.TransactionOptions;
+
+db.transaction(tx -> transfer(tx), TransactionOptions.lockWait(Duration.ofSeconds(2)));
+
+db.transaction(tx -> transfer(tx),
+        TransactionOptions.lockWait(Duration.ofMillis(500)).withAttempts(3));
+```
+
+The transaction waits at most that long for any lock. On PostgreSQL Diwan runs
+`SET LOCAL lock_timeout` right after `BEGIN`, so it ends with the transaction. On SQLite and
+Android it sets `busy_timeout` before `BEGIN` and puts the old value back after the commit or the
+failure.
+
+- A wait that runs out throws `QueryException` with `isConcurrencyFailure()` true, so `attempts`
+  runs the callback again.
+- `TransactionOptions.attempts(n)` is the same as `transaction(callback, n)`. `Connection.transaction(callback, int)` is now a default method that calls it.
+- Only the outermost transaction takes a lock wait. A nested `transaction(...)` with `lockWait`
+  throws `IllegalStateException`.
+- A transaction opened outside Diwan (a container transaction) gets no lock wait.
+- The duration must be positive and at most `Integer.MAX_VALUE` milliseconds. A smaller part of a
+  millisecond rounds up to 1 ms.
 
 ### afterCommit and afterRollback
 

@@ -122,6 +122,54 @@ protected Map<String, Attribute<?>> accessors() {
 
 تُقرأ `casts()` و`accessors()` مرة واحدة لكل صنف، فلا يجوز أن تعتمدا على حالة النسخة.
 
+### decimal صارم للمال
+
+يقرأ `decimal:2` ويكتب أي رقم بخانتين عشريتين ويقرّب الخانات الزائدة half up، كما يفعل Laravel. للمال، صرّح بالعمود بنفس أرقام الـ migration الخاصة به، فيفحص الـ cast ما يتّسع له العمود:
+
+```java
+// migration: table.decimal("total", 6, 2)   -- 6 digits in all, 2 after the point
+@Override
+protected Map<String, Cast<?>> casts() {
+    return CastMap.create()
+            .put("total", Casts.decimal(6, 2))                          // decimal:6,2
+            .put("tax", Casts.decimal(6, 2, RoundingMode.HALF_EVEN))    // decimal:6,2,HALF_EVEN
+            .build();
+}
+```
+
+وتعمل نصوص المواصفة (spec) أيضًا: `decimal:6,2` و`decimal:6,2,HALF_EVEN` (اسم الوضع بأي حالة أحرف). الرقم الأول هو إجمالي الخانات والثاني عدد الخانات بعد الفاصلة. يجب أن يحقق كلاهما `0 <= scale <= precision`، والتصريح الخاطئ يرمي `IllegalArgumentException`.
+
+عند تعيين قيمة:
+
+- الخانات العشرية الأكثر من الـ scale مرفوضة افتراضيًا. أما الوضع (mode) فيقرر ما يحدث لها بدل ذلك: `Casts.decimal(6, 2)` ترفض `10.125`، و`Casts.decimal(6, 2, HALF_UP)` تخزّن `10.13`.
+- الخانات الصحيحة الأكثر من `precision - scale` مرفوضة دائمًا مهما كان الوضع. مع `decimal:6,2` تُرفض `10000.00`، وكذلك `9999.999` تحت `HALF_UP`، لأن التقريب يحملها إلى `10000.00`.
+- القيمة المرفوضة ترمي `InvalidCastException`. تسمّي الرسالة النموذج والـ attribute والقاعدة التي كُسرت، ولا تحتوي القيمة أبدًا.
+
+القراءة تعيد `BigDecimal` بالـ scale المصرّح به، فتعود `12.5` على هيئة `12.50`.
+
+| الوضع (Mode) | القاعدة | مثال، `decimal:6,2,MODE` | المخزَّن |
+|---|---|---|---|
+| `UNNECESSARY` (الافتراضي) | يرفض أي خانة عشرية زائدة. | تبقى `10.12` كما هي `10.12`؛ و`10.125` ترمي | `10.12` |
+| `HALF_UP` | يقرّب إلى الأقرب، والتعادل بعيدًا عن الصفر. | `10.125` | `10.13` |
+| `HALF_EVEN` | يقرّب إلى الأقرب، والتعادل إلى الخانة الزوجية (تقريب المصرفيين). | `10.125` | `10.12` |
+| `DOWN` | يقطع نحو الصفر. | `10.129` | `10.12` |
+| `UP` | يقرّب بعيدًا عن الصفر. | `10.121` | `10.13` |
+| `FLOOR` | يقرّب نحو سالب اللانهاية. | `-10.121` | `-10.13` |
+| `CEILING` | يقرّب نحو موجب اللانهاية. | `-10.129` | `-10.12` |
+
+### قاعدة الـ 15 رقمًا على SQLite
+
+تحتفظ SQLite بعمود decimal كعدد double، يتسع لنحو 15 رقمًا معنويًا. لذلك يرفض الـ cast الصارم على SQLite أي قيمة فيها أكثر من 15 رقمًا معنويًا. ويسمّي `InvalidCastException` العمود ولا يذكر القيمة أبدًا. أما PostgreSQL فتخزّن decimal دقيقًا ولم تتغيّر.
+
+هذا تغيير في السلوك لمن يرقّي: قيمة كانت تُقبل سابقًا وفيها أكثر من 15 رقمًا ترمي الآن. وللاحتفاظ بقيم أطول دقيقة على SQLite استعمل عمود نص مع `Casts.decimalText(precision, scale)`، وهو يحتفظ بقواعد الدقة والمنازل الصارمة لكنه يتخطى حد الخمسة عشر رقمًا:
+
+```java
+// migration: table.string("rate")   -- text column, exact digits
+.put("rate", Casts.decimalText(30, 15))
+```
+
+`Casts.decimal(scale)` (`decimal:2`) لم تتغيّر: لا حدّ لها على الـ precision وتقرّب half up. استعمل الصيغة الصارمة للمال، ليتّسع العمود دائمًا للقيمة المخزّنة.
+
 ## الحفظ والإنشاء والبحث
 
 ```java
@@ -306,6 +354,7 @@ page.total();
 | `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | إعدادات النموذج كما يحسمها: الجدول، واسم المفتاح الأساسي ونوعه، وهل تولّد قاعدة البيانات المفتاح، والمفتاح مسبوقًا باسم الجدول (`users.id`)، وعمود مسبوق باسم الجدول، واسم المفتاح الأجنبي الذي تستخدمه الجداول الأخرى لهذا النموذج، وحجم الصفحة الافتراضي، ونوع المعرّف الفريد. | `post.getQualifiedKeyName()` |
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | الوصول للاتصال: اتصال النموذج واسمه، وربط النموذج بـ query factory (`setConnection`)، والـ factory الذي يستخدمه، وbuilder أساسي جديد على جدول النموذج. | `post.newBaseQuery().where("id", 1)` |
 | `Casts.instant` | `Casts` | cast يخزّن `Instant` مهما كانت صيغة طوابع النموذج، لأعمدة `Blueprint.instant`. وأعمدة الطوابع تحتاج أيضًا `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
+| `Casts.decimal` | `Casts` | الدالة `decimal(scale)` هي الـ cast المقرِّب `decimal:N`. أما `decimal(precision, scale[, mode])` فهي الـ cast الصارم: precision وscale كما في `Blueprint.decimal`، والخانات العشرية الزائدة مرفوضة ما لم يُعطَ وضع تقريب. | `.put("total", Casts.decimal(6, 2))` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | إعدادات الوقت وJSON: الـ codec خلف casts الـ JSON وصيغة JSON، ونمط الطوابع النصية، وطريقة كتابة الطوابع، والساعة التي يقرأ منها النموذج الطوابع. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | أعمدة الطوابع: أسماء أعمدة created-at وupdated-at وdeleted-at (الأخير أيضًا مسبوقًا بالجدول)، وهل يكتب النموذج الطوابع الآن. | `post.usesTimestamps()` |
 | `freshTimestamp` `freshTimestampValue` `fromDateTime` `updateTimestamps` | `Model` | دوال مساعدة للطوابع: اللحظة الحالية من ساعة النموذج بالصيغة التي يخزّنها، وتحويل لحظة إلى هذه الصيغة، وضبط `updated_at` (و`created_at` للنموذج الجديد) ما لم يكونا معدّلين. | `post.updateTimestamps()` |

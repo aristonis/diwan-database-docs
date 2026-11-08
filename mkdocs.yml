@@ -45,6 +45,7 @@ nav:
       - Migrations: migrations.md
       - Models: models.md
       - Relations: relations.md
+      - Testing: testing.md
       - Android: android.md
   - Glossary: glossary.md
   - AI agents:

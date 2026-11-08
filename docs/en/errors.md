@@ -47,7 +47,7 @@ try {
 }
 ```
 
-The driver classifies the failure. The classes are `DriverFailureKind.UNIQUE_VIOLATION`, `FOREIGN_KEY_VIOLATION`, `CONCURRENCY`, `CANCELLED`, `CONNECTION_LOST` and `COMMIT_OUTCOME_UNKNOWN`. If `COMMIT` fails with a lost connection, the commit may have landed. Check the database before you retry or undo.
+The driver classifies the failure. The classes are `DriverFailureKind.UNIQUE_VIOLATION`, `FOREIGN_KEY_VIOLATION`, `CHECK_VIOLATION`, `NOT_NULL_VIOLATION`, `CONCURRENCY`, `CANCELLED`, `CONNECTION_LOST` and `COMMIT_OUTCOME_UNKNOWN`. If `COMMIT` fails with a lost connection, the commit may have landed. Check the database before you retry or undo.
 
 The `getCause()` of a `QueryException` is a `DriverException`. Its message has a fixed form:
 
@@ -58,7 +58,8 @@ Database failure (SQL state unknown, vendor code 5): concurrency, SQLITE_BUSY
 The first part always appears. The kinds the driver recognised follow after `: `, as lower-case
 words, and the SQLite result code name follows them when Diwan knows the code. With neither a
 kind nor a known code, the message is the first part only. The message never holds values or
-database text.
+database text. The Diwan error code that ends the message, described below, holds only constraint
+and column names.
 
 ## What messages never contain
 
@@ -77,6 +78,75 @@ By default it holds no binding values and no database error text, because both c
 - Passwords never appear. `ConnectionConfig` prints `***`, and `DatabaseConfigException` names the key but never the value.
 - Events carry raw values. Call `redacted()` on a `QueryExecuted` or `QueryFailed` before you log it.
 - A serialized `QueryException` leaves out hidden bindings.
+
+## Diwan error codes
+
+`DriverException.error()` gives the unified error of a failure: a stable code, the constraint or
+index name, and the columns involved. From a `QueryException`, reach the driver exception with
+`getCause()`:
+
+```java
+try {
+    db.insert("insert into users (email) values (?)", email);
+} catch (QueryException e) {
+    DiwanError error = ((DriverException) e.getCause()).error();
+    switch (error.code()) {
+        case "DWN-CST-0001":
+            return "That email is already registered.";
+        case "DWN-TXN-0001":
+            return "Please try again.";
+        default:
+            throw e;
+    }
+}
+```
+
+| Code | Kind | Meaning |
+|---|---|---|
+| `DWN-CST-0001` | `UNIQUE_VIOLATION` | A unique or primary key was broken. |
+| `DWN-CST-0002` | `FOREIGN_KEY_VIOLATION` | A foreign key was broken. |
+| `DWN-CST-0003` | `CHECK_VIOLATION` | A check constraint was broken. |
+| `DWN-CST-0004` | `NOT_NULL_VIOLATION` | A NOT NULL column received null. |
+| `DWN-TXN-0001` | `CONCURRENCY` | A deadlock, a serialization failure or a busy database. Run the work again. |
+| `DWN-TXN-0002` | none | Reserved for a lock wait failure. No failure reports it yet. |
+| `DWN-TXN-0003` | `COMMIT_OUTCOME_UNKNOWN` | A commit failed on a lost connection, so it may have landed. Check the database. |
+| `DWN-CNX-0001` | `CONNECTION_LOST` | The connection to the database was lost. |
+| `DWN-QRY-0001` | `CANCELLED` | The statement was cancelled. |
+| `DWN-UNK-0000` | none | The driver did not recognise the failure. |
+
+A failure can have more than one kind. Its code is the first row of this table whose kind it has,
+so the table runs in precedence order from top to bottom. For example, a failure with both
+`CONCURRENCY` and `CONNECTION_LOST` reports `DWN-TXN-0001`.
+
+Codes are public API. A code never changes its meaning, is never renumbered and is never reused. A
+new failure gets a new code, and a new driver only maps its own errors to the existing codes. Write
+code against `code()`, not against the message text or the vendor code.
+
+`key()` is the name of the constraint or index, and `columns()` lists the columns involved. Both
+are empty when the driver cannot give them. They hold schema names, never row values. Each driver
+gives:
+
+| Failure | PostgreSQL | SQLite |
+|---|---|---|
+| Unique | key: the constraint name. Columns: none, since the server does not name them for this error. | Key: none. Columns: the columns of the index. |
+| Foreign key | Key: the constraint name. Columns: none. | Nothing. |
+| Check | Key: the constraint name. Columns: none. | Key: the constraint name. On older SQLite, such as the one in Android 9, an unnamed check reports its expression text as the key. Name your checks. |
+| Not null | Key: none. Columns: the column. | Columns: the column. |
+
+PostgreSQL gives these values from the server's structured error fields, not from the message
+text, so they do not depend on the server's language.
+
+The message of a `DriverException` and of a `QueryException` ends with the code, the words of its
+kind, and then the key and columns when they are known:
+
+```text
+... [DWN-CST-0001 unique violation: users_email_unique (email)]
+```
+
+The form is `[<code> <kind words>[: <key>][ (<columns>)]]`. Without a key the colon part is left
+out, and without columns the parentheses are left out. A failure Diwan does not recognise ends with
+`[DWN-UNK-0000]`. The accessors `sqlState()`, `vendorCode()`, `kinds()` and `databaseMessage()` are
+unchanged.
 
 ## Exceptions by area
 

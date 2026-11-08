@@ -145,6 +145,24 @@ for (ForeignKeyInfo key : schema.foreignKeys("posts")) {
 }
 ```
 
+### سرد كل شيء وحذفه
+
+```java
+List<TableInfo> tables = schema.getTables();        // name and schema, ordered by schema, then name
+List<String> names = schema.getTableListing();      // names only
+List<ViewInfo> views = schema.getViews();
+
+schema.dropAllViews();
+schema.dropAllTables();
+```
+
+الصنفان `TableInfo` و`ViewInfo` قيمتان غير قابلتين للتعديل فيهما `name()` و`schema()`. الجداول الداخلية لا تُسرد: جداول `sqlite_` و`android_metadata` وجداول FTS المساعدة على SQLite وAndroid، و`spatial_ref_sys` على PostgreSQL. يعيد السرد أسماء الجداول الحقيقية بما فيها بادئة الجداول (table prefix) في الاتصال، كما في Laravel. وعلى SQLite الأقدم من 3.37 تُخفى أيضًا الجداول المساعدة لـ FTS3-5 وR-Tree.
+
+- **PostgreSQL:** جداول الـ schemas الموجودة في `search_path`، وتُحذف بعبارة واحدة `drop table ... cascade`. يبقى `spatial_ref_sys`. وإن لم يكن هناك ما يُحذف فلا تُنفَّذ أي عبارة. الأنواع (types) والـ sequences والدوال لا تُحذف.
+- **SQLite وAndroid:** يُحذف كل جدول، الأبناء أولًا، فلا تمنع المفاتيح الأجنبية الحذف. تُتخطى جداول FTS المساعدة، ويبقى `android_metadata`.
+
+الدالة `Migrator.fresh()` تستعمل هذه الاستدعاءات: انظر [الـ Migrations](migrations.md#start-from-scratch).
+
 ## معاينة الـ SQL
 
 ```java

@@ -57,6 +57,14 @@ migrator.reset();             // everything
 
 على SQLite وPostgreSQL تُثبَّت الـ migration وسجلها معًا (commit)، فلا يبقى عند الفشل migration نصف منفذة ولا سجل شارد. الفشل يوقف الاستدعاء بـ `MigrationFailedException`. دالتها `completed()` تسرد ما انتهى، و`phase()` تقول هل فشلت الـ migration أم سجلها فقط. ويرفض الـ migrator العمل داخل transaction فتحتها أنت.
 
+### البدء من الصفر
+
+```java
+migrator.fresh();     // drop every view and table, then run all migrations
+```
+
+تستدعي `fresh()` الدالتين `schema.dropAllViews()` و`schema.dropAllTables()`، ومنها جدول الـ migrations، ثم `run()`، وتعيد ما تعيده `run()`. استعملها لقواعد الاختبار والقواعد المحلية، لا لقاعدة منشورة. انظر [الـ Schema builder](schema.md#list-and-drop-everything) لما يُحذف، و[الاختبار](testing.md) للـ extension الذي يستدعيها.
+
 ### الحالة وpretend
 
 ```java

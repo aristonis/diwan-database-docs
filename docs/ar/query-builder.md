@@ -43,7 +43,7 @@ Optional<Object> email = query.table("users").where("id", 7).value("email");
 boolean any = query.table("orders").where("status", "open").exists();
 ```
 
-الصفوف من نوع `Map<String, Object>`. من المرشحات الأخرى `whereBetween` و`whereLike` و`whereColumn` و`whereAny` و`whereAll` و`whereNone`، والشروط المجمعة بـ `where(q -> ...)`، و`groupBy` مع `having`. الدالتان `toSql()` و`getBindings()` تعرضان ما سينفذه الـ builder.
+الصفوف من نوع `Map<String, Object>`. من المرشحات الأخرى `whereBetween` و`whereLike` و`whereContains` (انظر أدناه) و`whereColumn` و`whereAny` و`whereAll` و`whereNone`، والشروط المجمعة بـ `where(q -> ...)`، و`groupBy` مع `having`. الدالتان `toSql()` و`getBindings()` تعرضان ما سينفذه الـ builder.
 
 الدالة `where(column, operator, value)` تقبل عوامل المقارنة (operators) في الـ builder (`=` و`<` و`>` و`<=` و`>=` و`<>` و`!=` و`like` و`not like` و`ilike` وغيرها) وعوامل الـ grammar (قواعد توليد SQL) الخاصة بها. العامل المجهول يُعامل كأنه القيمة، فـ `where("total", "=>", 10)` يقارن `total` بالنص `=>`، كما في Laravel.
 
@@ -57,6 +57,46 @@ query.table("alarms").where("task_id", taskId).whereNotIn("id", keep).delete();
 ```
 
 دوال التاريخ (`whereDate` و`whereMonth` وغيرهما) مخصصة لأعمدة التاريخ النصية. مع أعمدة الـ instant (لحظة زمنية) استخدم `whereInstantBetween(column, from, to)`.
+
+## البحث في مدخلات المستخدم
+
+الدوال `whereContains` و`whereStartsWith` و`whereEndsWith` تجد نصًا كتبه المستخدم. وهي تعامل النص دائمًا كما هو حرفيًا: الرموز `%` و`_` و`!` تطابق نفسها، ولا تعمل أبدًا كرموز بدل (wildcards).
+
+```java
+List<Map<String, Object>> rows = query.table("users")
+        .whereContains("name", userInput)            // the name holds the input, as typed
+        .orWhereStartsWith("email", prefix)
+        .whereNotEndsWith("email", ".test", true)    // case-sensitive
+        .get();
+```
+
+تأخذ كل دالة `(column, value)` أو `(column, value, caseSensitive)`. والقيمة الافتراضية للعلم `false`، كما في `whereLike`. ولكل مرساة أربع صيغ: `whereContains` و`orWhereContains` و`whereNotContains` و`orWhereNotContains`، وكذلك `StartsWith` و`EndsWith`.
+
+- القيمة `null` ترمي `IllegalArgumentException`.
+- القيمة الفارغة تطابق كل صف عموده ليس null، لأن كل نص يبدأ وينتهي بالنص الفارغ. والعمود null لا يطابق أبدًا.
+
+تُربط القيمة معاملًا واحدًا. ويهرّبها Diwan أولًا، مع `!` كحرف تهريب: يصير `!` إلى `!!`، ثم يُضاف `!` قبل `%` و`_`. ويعتمد الـ SQL على قاعدة البيانات:
+
+| قاعدة البيانات | الافتراضي (`caseSensitive` false) | `caseSensitive` true |
+|---|---|---|
+| PostgreSQL | `col::text ilike ? escape '!'` | `col::text like ? escape '!'` |
+| SQLite | `col like ? escape '!'` | `col glob ?` |
+
+الـ GLOB في SQLite بلا حرف تهريب، فالصيغة الحساسة لحالة الأحرف تضع `*` و`?` و`[` بين أقواس مربعة، فيطابق كلٌّ منها نفسه.
+
+ملاحظات:
+
+- المطابقة الافتراضية في SQLite تتجاهل حالة الأحرف ASCII فقط، فلا يطابق `É` الحرف `é` هناك.
+- لا تستعمل SQLite فهرسًا مع `LIKE` ومعها جملة `ESCAPE`. أما `whereStartsWith` الحساسة لحالة الأحرف فتستعمل `GLOB` بدلها، ويمكنها استعمال فهرس على عمود بترتيب (collation) `BINARY`.
+- في PostgreSQL يمكن لـ `whereStartsWith` الحساسة لحالة الأحرف استعمال فهرس `text_pattern_ops` على عمود نصي. أما `ilike` فلا يمكنها استعمال فهرس B-tree عادي؛ وفي جدول كبير يخدم فهرس GIN من `pg_trgm` (`create index ... using gin (col gin_trgm_ops)`) البحث بالاحتواء والبداية والنهاية في الحالتين. ويُقارَن العمود بصيغة `col::text`، لذلك لا يطابق فهرسٌ على عمود غير نصي.
+
+### whereLike تبقى خامًا
+
+تعمل `whereLike` كما في Laravel: النمط صيغة LIKE خام، فـ `%` و`_` رموز بدل ولا يُهرَّب شيء. استعملها للأنماط التي تكتبها بنفسك. لا تمرّر مدخلات المستخدم إلى `whereLike`، حتى مع إضافة `%` حولها. استعمل لذلك `whereContains` أو `whereStartsWith` أو `whereEndsWith`.
+
+```java
+query.table("users").whereLike("name", "A%");   // names that start with A, as written
+```
 
 ## الربط والاستعلامات الفرعية والاتحاد
 
@@ -87,6 +127,20 @@ Optional<Object> biggest = query.table("orders").max("total");
 Optional<Number> mean = query.table("orders").avg("total");
 ```
 
+### مجاميع decimal الدقيقة
+
+ترجع `sum` قيمة `Number`. وللمال استعمل `sumDecimal` التي ترجع `BigDecimal` بالـ scale الذي تعطيه:
+
+```java
+BigDecimal paid = query.table("payments").sumDecimal("amount", 2);                       // HALF_UP
+BigDecimal net = query.table("payments").sumDecimal("amount", 2, RoundingMode.HALF_EVEN);
+```
+
+- على PostgreSQL المجموع دقيق.
+- على SQLite تكون `SUM` عددًا من نوع double ويقرّبه Diwan إلى الـ scale. وهذا مناسب للمجاميع العادية وتقريبي للكبيرة جدًا (ملايين القيم الكبيرة).
+- غياب الصفوف يعطي صفرًا بالـ scale (`0.00`).
+- للـ Eloquent builder الدوال نفسها عبر `query()`.
+
 ## الإدراج والتحديث والحذف
 
 ```java
@@ -98,6 +152,15 @@ query.table("users").where("id", id).delete();
 query.table("archive").insertUsing(List.of("id", "total"),
         q -> q.from("orders").select("id", "total").where("status", "closed"));
 ```
+
+لتفريغ عدة جداول معًا استدعِ `truncate` على المصنع:
+
+```java
+query.truncate(List.of("posts", "comments"));          // empty them, restart identities
+query.truncate(List.of("users"), true);                // cascade: also empty tables that refer to users
+```
+
+القائمة الفارغة لا تنفذ شيئًا، والاسم null أو الفارغ يرمي استثناء. على PostgreSQL هي عبارة واحدة `truncate ... restart identity`، و`cascade` هو الأصلي فيها. على SQLite وAndroid تُحذف الصفوف مع تجاوز فحص المفاتيح الأجنبية، والـ `cascade` محاكى: كل جدول يشير إلى الجداول المذكورة، مباشرة أو عبر جداول أخرى، يُفرَّغ أيضًا، الأبناء أولًا، كما تفعل PostgreSQL، لكن المحاكاة تتبع فقط الجداول التي تحمل بادئة الاتصال (table prefix). وتُعاد ضبط صفوف `sqlite_sequence` المقابلة، وتُعالَج قاعدة لا تحتوي جدول `sqlite_sequence`. أما تفريغ جدول واحد بالـ builder فلم يتغير.
 
 يجوز أن يربط التحديث أو الحذف جداول أخرى. على SQLite هذا يتطلب جدولًا له rowid. الكتابة تحتاج جدولًا، لا استعلامًا فرعيًا ولا `from` خامًا.
 
@@ -135,6 +198,23 @@ connection.transaction(c -> {
 - يحتاج select المقفول على PostgreSQL إلى transaction، ويرمي `IllegalStateException` خارجها. نفّذ الاستعلام على الاتصال الذي يعطيك إياه callback (دالة يستدعيها النظام) الدالة `transaction(...)`.
 - SQLite لا تدعم أقفال الصفوف. كل قوة قفل (`UPDATE` و`SHARE` و`NO_KEY_UPDATE` و`KEY_SHARE`) لا تكتب شيئًا هناك: SQLite تقفل قاعدة البيانات كلها، وعند أول كتابة في الـ transaction فقط. و`NOWAIT` و`SKIP_LOCKED` ترميان `UnsupportedOperationException`. الكود الذي يعتمد على القفل للاستبعاد المتبادل آمن على PostgreSQL فقط.
 - الدوال التجميعية و`exists` وعدّاد `paginate` تهمل القفل. والـ union مع قفل مرفوض.
+
+### قفل بمدة (timed lock)
+
+```java
+connection.transaction(c -> {
+    var row = query.on(c).table("accounts").where("id", 1)
+            .lock(LockStrength.UPDATE, Duration.ofSeconds(2)).first();
+    return row;
+});
+```
+
+تنتظر `lock(strength, Duration)` قفل الصف هذه المدة كحد أقصى، ثم ترمي `QueryException` تعيد `isConcurrencyFailure()` فيه `true`.
+
+- على PostgreSQL فقط. تحتاج إلى transaction مفتوحة وترمي `IllegalStateException` خارجها. وSQLite وAndroid ترميان `UnsupportedOperationException`.
+- تسري على هذه الجملة وحدها. يعيد Diwan قيمة `lock_timeout` السابقة بعد الجملة.
+- على cursor مقفول يسري الحد أثناء فتح الـ cursor فقط. والجلبات اللاحقة بلا حد.
+- حد الجملة أقوى من `lockWait` للـ transaction ومن مفتاح الإعداد `lock_wait`. انظر [الاتصالات](connections.md#lock-wait).
 
 ## Pagination (ترقيم الصفحات)
 
@@ -252,6 +332,7 @@ query.table("orders").whereRaw("total > ? and status = ?", List.of(100, status))
 | `orWhereColumn` | `Builder` | تقارن عمودين بالمساواة (تربطها `orWhereColumn` بـ OR). | `q.orWhereColumn("a", "b")` |
 | `whereNotExists` `orWhereExists` `orWhereNotExists` | `Builder` | شروط EXISTS وNOT EXISTS على استعلام فرعي، مع صيغ `or`. | `q.whereNotExists(sub -> ...)` |
 | `whereNotLike` `orWhereLike` `orWhereNotLike` | `Builder` | شروط LIKE وNOT LIKE غير حساسة لحالة الأحرف، مع صيغ `or`. | `q.whereNotLike("name", "a%")` |
+| `whereContains` `whereStartsWith` `whereEndsWith`، مع صيغ `or` و`Not` و`orNot` | `Builder` | بحث نصي لمدخلات المستخدم، تبقى فيه القيمة حرفية دائمًا، مع علم `caseSensitive` اختياري. | `q.whereContains("name", input)` |
 | `orWhereAll` `orWhereAny` `orWhereNone` | `Builder` | مجموعات `or` على عدة أعمدة: كل الأعمدة تساوي القيمة (`All`)، أو واحد منها على الأقل (`Any`)، أو لا واحد (`None`). | `q.orWhereAny(cols, "x")` |
 | `whereDay` `whereYear` `whereTime` `orWhereDate` `orWhereDay` `orWhereMonth` `orWhereYear` `orWhereTime` | `Builder` | شروط على جزء من عمود تاريخ أو وقت نصي: اليوم أو الشهر أو السنة أو الوقت (والتاريخ في `orWhereDate`)، بالمساواة. صيغ `or` تربط بـ OR. | `q.whereYear("created_at", 2026)` |
 | `whereIntegerInRaw` | `Builder` | عمود ضمن قائمة أعداد صحيحة تُكتب داخل الـ SQL ولا تُربط؛ والقائمة الفارغة لا تطابق أي صف. | `q.whereIntegerInRaw("id", List.of(1, 2))` |

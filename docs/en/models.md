@@ -128,6 +128,68 @@ protected Map<String, Attribute<?>> accessors() {
 
 `casts()` and `accessors()` are read once per class, so they must not depend on instance state.
 
+### Strict decimals for money
+
+`decimal:2` reads and writes any number with two decimals and rounds extra decimals half up, as
+Laravel does. For money, declare the column with the same numbers as its migration, so the cast
+checks what the column can hold:
+
+```java
+// migration: table.decimal("total", 6, 2)   -- 6 digits in all, 2 after the point
+@Override
+protected Map<String, Cast<?>> casts() {
+    return CastMap.create()
+            .put("total", Casts.decimal(6, 2))                          // decimal:6,2
+            .put("tax", Casts.decimal(6, 2, RoundingMode.HALF_EVEN))    // decimal:6,2,HALF_EVEN
+            .build();
+}
+```
+
+The spec strings work too: `decimal:6,2` and `decimal:6,2,HALF_EVEN` (the mode name in any
+case). The first number is the total digits and the second the digits after the point. Both must
+satisfy `0 <= scale <= precision`, and a bad declaration throws `IllegalArgumentException`.
+
+When a value is set:
+
+- More decimals than the scale are refused by default. The mode decides what happens to them
+  instead: `Casts.decimal(6, 2)` refuses `10.125`, and `Casts.decimal(6, 2, HALF_UP)` stores
+  `10.13`.
+- More integer digits than `precision - scale` are always refused, whatever the mode. With
+  `decimal:6,2`, `10000.00` is refused, and so is `9999.999` under `HALF_UP`, because rounding
+  carries it to `10000.00`.
+- A refused value throws `InvalidCastException`. The message names the model, the attribute and the
+  rule it broke. It never contains the value.
+
+Reading returns a `BigDecimal` at the declared scale, so `12.5` comes back as `12.50`.
+
+| Mode | Rule | Example, `decimal:6,2,MODE` | Stored |
+|---|---|---|---|
+| `UNNECESSARY` (default) | Refuses any extra decimal. | `10.12` stays `10.12`; `10.125` throws | `10.12` |
+| `HALF_UP` | Rounds to the nearest, a tie away from zero. | `10.125` | `10.13` |
+| `HALF_EVEN` | Rounds to the nearest, a tie to the even digit (banker's rounding). | `10.125` | `10.12` |
+| `DOWN` | Cuts toward zero. | `10.129` | `10.12` |
+| `UP` | Rounds away from zero. | `10.121` | `10.13` |
+| `FLOOR` | Rounds toward negative infinity. | `-10.121` | `-10.13` |
+| `CEILING` | Rounds toward positive infinity. | `-10.129` | `-10.12` |
+
+### The 15-digit rule on SQLite
+
+SQLite keeps a decimal column as a double, which holds about 15 significant digits. The strict cast
+therefore refuses a value with more than 15 significant digits on SQLite. The `InvalidCastException`
+names the column, never the value. PostgreSQL stores exact decimals and is unchanged.
+
+This is a behavior change for upgraders: a value that was accepted before and carries more than 15
+digits now throws. To keep longer exact values on SQLite, use a text column with
+`Casts.decimalText(precision, scale)`, which keeps the strict precision and scale rules but skips the 15-digit limit:
+
+```java
+// migration: table.string("rate")   -- text column, exact digits
+.put("rate", Casts.decimalText(30, 15))
+```
+
+`Casts.decimal(scale)` (`decimal:2`) is unchanged: it has no precision limit and rounds half up.
+Use the strict form for money, so that a stored value always fits its column.
+
 ## Save, create and find
 
 ```java
@@ -333,6 +395,7 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | Model settings as the model resolves them: table, primary key name and type, whether the database assigns the key, the key qualified by table (`users.id`), a column qualified by table, the foreign key name other tables use for this model, the default page size and the unique id kind. | `post.getQualifiedKeyName()` |
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | Connection access: the model's connection and its name, binding the model to a query factory (`setConnection`), the factory it uses, and a new base query builder on the model's table. | `post.newBaseQuery().where("id", 1)` |
 | `Casts.instant` | `Casts` | A cast that stores an `Instant` whatever the model's timestamp format, for `Blueprint.instant` columns. Timestamp columns also need `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
+| `Casts.decimal` | `Casts` | `decimal(scale)` is the rounding `decimal:N` cast. `decimal(precision, scale[, mode])` is the strict cast: precision and scale as in `Blueprint.decimal`, extra decimals refused unless a rounding mode is given. | `.put("total", Casts.decimal(6, 2))` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | Time and JSON settings: the codec behind JSON casts and the JSON form, the pattern of text timestamps, how timestamps are written, and the clock the model reads timestamps from. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | Timestamp columns: the created-at, updated-at and deleted-at column names (the last one also qualified by table), and whether the model writes timestamps now. | `post.usesTimestamps()` |
 | `freshTimestamp` `freshTimestampValue` `fromDateTime` `updateTimestamps` | `Model` | Timestamp helpers: the current moment from the model's clock, in the form the model stores, converting a moment to that form, and setting `updated_at` (and `created_at` on a new model) unless already dirty. | `post.updateTimestamps()` |
