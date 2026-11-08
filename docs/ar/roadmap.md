@@ -1,6 +1,6 @@
 # خارطة الطريق
 
-ما يأتي بعد 0.1.0. قد يتغير الترتيب والنطاق، وأي بند يطلبه مستخدم يتقدم في القائمة. لطلب بند، افتح
+ما يأتي بعد 0.2.0. قد يتغير الترتيب والنطاق، وأي بند يطلبه مستخدم يتقدم في القائمة. لطلب بند، افتح
 [طلب ميزة](https://github.com/aristonis/diwan-database/issues/new/choose).
 
 | الحالة | المعنى |
@@ -28,7 +28,7 @@
 | مساعدات مجموعة النماذج | `toQuery` و `only` و `except` و `diff` و `intersect` و `unique` على مجموعات النماذج. | Planned |
 | التقليم (Pruning) | نماذج قابلة للتقليم فردياً وجماعياً للتنظيف المجدول. | Planned |
 | التحميل المسبق التلقائي | تحميل العلاقات على دفعات، لتجنّب استعلامات N+1 دون الحارس الصارم. | Planned |
-| مساعدات استعلام العلاقات | `withWhereHas` و `whereBelongsTo` و `whereAttachedTo`. | Planned |
+| مساعدات استعلام العلاقات | `withWhereHas` و `whereAttachedTo`. | Planned |
 | متعدد إلى متعدد عبر وسيط | علاقات عبر وسيط (through) تمر بجدول ربط (pivot). | Planned |
 | إضافات العلاقات والنماذج | دوال Laravel الأصغر مثل `incrementEach` و `valueOrFail` و `restoreOrCreate` و `withAttributes`. | Planned |
 

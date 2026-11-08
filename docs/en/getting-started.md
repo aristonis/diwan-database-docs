@@ -8,9 +8,9 @@ Gradle (Kotlin DSL):
 
 ```kotlin
 dependencies {
-    implementation("org.aristonis:diwan-database:0.1.0")
-    implementation("org.aristonis:diwan-database-sqlite:0.1.0")
-    implementation("org.aristonis:diwan-database-eloquent:0.1.0")   // only if you use models
+    implementation("org.aristonis:diwan-database:0.2.0")
+    implementation("org.aristonis:diwan-database-sqlite:0.2.0")
+    implementation("org.aristonis:diwan-database-eloquent:0.2.0")   // only if you use models
     runtimeOnly("org.xerial:sqlite-jdbc:3.54.1.0")                  // the JDBC driver
 }
 ```
@@ -21,17 +21,17 @@ Maven:
 <dependency>
   <groupId>org.aristonis</groupId>
   <artifactId>diwan-database</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
 </dependency>
 <dependency>
   <groupId>org.aristonis</groupId>
   <artifactId>diwan-database-sqlite</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
 </dependency>
 <dependency>
   <groupId>org.aristonis</groupId>
   <artifactId>diwan-database-eloquent</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
 </dependency>
 <dependency>
   <groupId>org.xerial</groupId>

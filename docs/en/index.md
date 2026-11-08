@@ -20,11 +20,11 @@ List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).g
 
 | Module | Coordinates | What it gives you |
 |---|---|---|
-| Core | `org.aristonis:diwan-database:0.1.0` | `Connection`, transactions, `DatabaseManager`, the query builder, the schema builder, migrations. No runtime dependency. |
-| SQLite | `org.aristonis:diwan-database-sqlite:0.1.0` | The SQLite query and schema grammars. |
-| PostgreSQL | `org.aristonis:diwan-database-pgsql:0.1.0` | The PostgreSQL grammars and a migration lock. You add the PostgreSQL JDBC driver yourself. |
-| Eloquent | `org.aristonis:diwan-database-eloquent:0.1.0` | Models, relations, eager loading, casts, scopes, soft deletes, model events. |
-| Android | `org.aristonis:diwan-database-android:0.1.0` | A driver over Android's own `SQLiteDatabase`. |
+| Core | `org.aristonis:diwan-database:0.2.0` | `Connection`, transactions, `DatabaseManager`, the query builder, the schema builder, migrations. No runtime dependency. |
+| SQLite | `org.aristonis:diwan-database-sqlite:0.2.0` | The SQLite query and schema grammars. |
+| PostgreSQL | `org.aristonis:diwan-database-pgsql:0.2.0` | The PostgreSQL grammars and a migration lock. You add the PostgreSQL JDBC driver yourself. |
+| Eloquent | `org.aristonis:diwan-database-eloquent:0.2.0` | Models, relations, eager loading, casts, scopes, soft deletes, model events. |
+| Android | `org.aristonis:diwan-database-android:0.2.0` | A driver over Android's own `SQLiteDatabase`. |
 
 ## Platforms and databases
 
@@ -33,7 +33,6 @@ List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).g
 - Spring and other containers, through a connection provider that reports the container's transaction. Diwan then nests inside it with savepoints and never commits it.
 - Databases: SQLite and PostgreSQL. MySQL and SQL Server are not supported.
 
-Version 0.1.0 is not published yet. Build it locally with `./gradlew check` until it is.
 
 ## Security
 

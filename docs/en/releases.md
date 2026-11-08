@@ -5,6 +5,20 @@ The full list of changes in each version is in the
 also has a page on [GitHub Releases](https://github.com/aristonis/diwan-database/releases), with the
 same notes and the release files.
 
+## 0.2.0 (2026-11-08)
+
+Fixes and Laravel ports that apps built on 0.1.0 asked for. It adds:
+
+- **Schema:** column collation with a portable binary order, and foreign key names from
+  `constrained(table, column, name)`.
+- **Models:** `fillAndInsert` and its siblings, `whereBelongsTo`, a keyed `pluck`, and
+  `Casts.instant()`.
+- **SQLite:** the `transaction_mode` option, key-level row locks as no-ops, and `busy_timeout` on
+  file databases.
+- **Errors:** driver failure messages that name the kind Diwan recognised.
+
+Nothing breaks; see the [upgrade guide](upgrade.md) for the four behaviour changes.
+
 ## 0.1.0 (first release, 2026-11-07)
 
 The first public version. It brings:

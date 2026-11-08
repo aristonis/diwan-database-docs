@@ -5,10 +5,10 @@ Android's own `SQLiteDatabase`, so the schema builder, migrations, query builder
 on the desktop. The module is a plain JAR with no runtime dependency.
 
 ```kotlin
-implementation("org.aristonis:diwan-database:0.1.0")
-implementation("org.aristonis:diwan-database-android:0.1.0")
-implementation("org.aristonis:diwan-database-sqlite:0.1.0")
-implementation("org.aristonis:diwan-database-eloquent:0.1.0")   // only if you use models
+implementation("org.aristonis:diwan-database:0.2.0")
+implementation("org.aristonis:diwan-database-android:0.2.0")
+implementation("org.aristonis:diwan-database-sqlite:0.2.0")
+implementation("org.aristonis:diwan-database-eloquent:0.2.0")   // only if you use models
 ```
 
 ## Set up the driver

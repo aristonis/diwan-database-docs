@@ -20,11 +20,11 @@ List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).g
 
 | الوحدة | الإحداثيات | ماذا تعطيك |
 |---|---|---|
-| Core | `org.aristonis:diwan-database:0.1.0` | `Connection` والمعاملات (transactions) و`DatabaseManager` وباني الاستعلامات وباني المخطط (schema builder) والـ `migration`. بلا أي اعتماد وقت التشغيل. |
-| SQLite | `org.aristonis:diwan-database-sqlite:0.1.0` | قواعد (grammar) الاستعلام والمخطط الخاصة بـ SQLite. |
-| PostgreSQL | `org.aristonis:diwan-database-pgsql:0.1.0` | قواعد PostgreSQL وقفل للـ `migration`. تضيف مشغّل PostgreSQL JDBC (واجهة Java للاتصال بقواعد البيانات) بنفسك. |
-| Eloquent (طبقة النماذج والعلاقات المنقولة من Laravel) | `org.aristonis:diwan-database-eloquent:0.1.0` | النماذج والعلاقات والتحميل المسبق (eager loading) والـ casts والـ scopes والحذف الناعم (soft deletes) وأحداث النموذج. |
-| Android | `org.aristonis:diwan-database-android:0.1.0` | مشغّل (driver) فوق `SQLiteDatabase` الخاصة بـ Android. |
+| Core | `org.aristonis:diwan-database:0.2.0` | `Connection` والمعاملات (transactions) و`DatabaseManager` وباني الاستعلامات وباني المخطط (schema builder) والـ `migration`. بلا أي اعتماد وقت التشغيل. |
+| SQLite | `org.aristonis:diwan-database-sqlite:0.2.0` | قواعد (grammar) الاستعلام والمخطط الخاصة بـ SQLite. |
+| PostgreSQL | `org.aristonis:diwan-database-pgsql:0.2.0` | قواعد PostgreSQL وقفل للـ `migration`. تضيف مشغّل PostgreSQL JDBC (واجهة Java للاتصال بقواعد البيانات) بنفسك. |
+| Eloquent (طبقة النماذج والعلاقات المنقولة من Laravel) | `org.aristonis:diwan-database-eloquent:0.2.0` | النماذج والعلاقات والتحميل المسبق (eager loading) والـ casts والـ scopes والحذف الناعم (soft deletes) وأحداث النموذج. |
+| Android | `org.aristonis:diwan-database-android:0.2.0` | مشغّل (driver) فوق `SQLiteDatabase` الخاصة بـ Android. |
 
 ## المنصات وقواعد البيانات
 
@@ -33,7 +33,6 @@ List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).g
 - Spring وغيرها من الحاويات، عبر connection provider (مزوّد اتصالات JDBC) يُبلّغ عن معاملة الحاوية. عندها تعمل Diwan داخلها بـ savepoint (نقطة حفظ داخل المعاملة) ولا تُنهي المعاملة أبدًا.
 - قواعد البيانات: SQLite وPostgreSQL. MySQL وSQL Server غير مدعومتين.
 
-الإصدار 0.1.0 غير منشور بعد. ابنِه محليًا بالأمر `./gradlew check` إلى أن يُنشر.
 
 ## الأمان
 

@@ -4,10 +4,10 @@
 فيعمل schema builder (باني المخطط) والـ migrations وquery builder (باني الاستعلامات) والنماذج كما على سطح المكتب. الوحدة JAR عادي بلا اعتماد وقت تشغيل.
 
 ```kotlin
-implementation("org.aristonis:diwan-database:0.1.0")
-implementation("org.aristonis:diwan-database-android:0.1.0")
-implementation("org.aristonis:diwan-database-sqlite:0.1.0")
-implementation("org.aristonis:diwan-database-eloquent:0.1.0")   // only if you use models
+implementation("org.aristonis:diwan-database:0.2.0")
+implementation("org.aristonis:diwan-database-android:0.2.0")
+implementation("org.aristonis:diwan-database-sqlite:0.2.0")
+implementation("org.aristonis:diwan-database-eloquent:0.2.0")   // only if you use models
 ```
 
 ## إعداد الـ driver

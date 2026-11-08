@@ -1,10 +1,10 @@
 # API reference
 
-The Javadoc for every public class will be on javadoc.io once `0.1.0` is published, at
-`https://javadoc.io/doc/org.aristonis/diwan-database/0.1.0` (one page per module). Until then, build
+The Javadoc for every public class is on javadoc.io, at
+`https://javadoc.io/doc/org.aristonis/diwan-database/0.2.0` (one page per module). You can also build
 it from the repository with `./gradlew javadoc`.
 
-All modules use the group `org.aristonis` and the version `0.1.0`. The packages sit under
+All modules use the group `org.aristonis` and the version `0.2.0`. The packages sit under
 `org.aristonis.diwan.database`.
 
 | Module (artifact) | Add it when | Main entry classes |

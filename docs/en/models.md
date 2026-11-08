@@ -7,7 +7,7 @@ so the SQL is the SQL you would get from `table(...)`.
 Models live in `diwan-database-eloquent`:
 
 ```kotlin
-implementation("org.aristonis:diwan-database-eloquent:0.1.0")
+implementation("org.aristonis:diwan-database-eloquent:0.2.0")
 ```
 
 ## Define a model

@@ -47,7 +47,7 @@ it behaves differently on purpose. Each row is a choice, not a missing feature.
 | The morph map is optional | Required unless you call `requireMorphMap(false)` |
 | `oldestOfMany` can return the highest key among ties | Returns the lowest |
 
-## Not in 0.1.0
+## Not in 0.2.0
 
 - Custom event classes, string event names and wildcard listeners.
 - `ObservedBy`; register an observer with `observe`.

@@ -1,9 +1,9 @@
 # مرجع الـ API
 
-سيكون Javadoc (توثيق الواجهة المولَّد من تعليقات Java) لكل صنف عام على javadoc.io بعد نشر `0.1.0`، على العنوان
-`https://javadoc.io/doc/org.aristonis/diwan-database/0.1.0` (صفحة لكل وحدة). حتى ذلك الحين ابنِه من المستودع بالأمر `./gradlew javadoc`.
+Javadoc (توثيق الواجهة المولَّد من تعليقات Java) لكل صنف عام موجود على javadoc.io، على العنوان
+`https://javadoc.io/doc/org.aristonis/diwan-database/0.2.0` (صفحة لكل وحدة). ويمكنك أيضًا بناؤه من المستودع بالأمر `./gradlew javadoc`.
 
-كل الوحدات (modules) تستعمل المجموعة `org.aristonis` والإصدار `0.1.0`. والحزم تحت `org.aristonis.diwan.database`.
+كل الوحدات (modules) تستعمل المجموعة `org.aristonis` والإصدار `0.2.0`. والحزم تحت `org.aristonis.diwan.database`.
 
 | الوحدة (artifact) | أضفها حين | أهم الأصناف |
 |---|---|---|

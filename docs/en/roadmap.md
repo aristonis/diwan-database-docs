@@ -1,6 +1,6 @@
 # Roadmap
 
-What comes after 0.1.0. Order and scope can change; an item a user asks for moves up. To ask for
+What comes after 0.2.0. Order and scope can change; an item a user asks for moves up. To ask for
 one, open a [feature request](https://github.com/aristonis/diwan-database/issues/new/choose).
 
 | Status | Meaning |
@@ -28,7 +28,7 @@ one, open a [feature request](https://github.com/aristonis/diwan-database/issues
 | Model collection helpers | `toQuery`, `only`, `except`, `diff`, `intersect` and `unique` on model collections. | Planned |
 | Pruning | Prunable and mass-prunable models for scheduled cleanup. | Planned |
 | Automatic eager loading | Batched loading of relations, to avoid N+1 queries without the strict guard. | Planned |
-| Relation query helpers | `withWhereHas`, `whereBelongsTo` and `whereAttachedTo`. | Planned |
+| Relation query helpers | `withWhereHas` and `whereAttachedTo`. | Planned |
 | Many-to-many through | Through relations across a pivot table. | Planned |
 | Relation and model extras | Smaller Laravel methods such as `incrementEach`, `valueOrFail`, `restoreOrCreate` and `withAttributes`. | Planned |
 
