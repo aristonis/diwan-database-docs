@@ -50,12 +50,36 @@ All keys start with `database.`. A connection is `database.connections.<name>.<k
 | `username`, `password` | The password is masked wherever the configuration prints. |
 | `prefix` | Table prefix, empty by default. |
 | `strict_transactions` | `true` by default. |
-| `sqlite`: `foreign_keys`, `busy_timeout` | Foreign keys on by default. `busy_timeout` is how long a second in-memory session waits, 30000 ms by default. |
+| `sqlite`: `foreign_keys`, `busy_timeout`, `transaction_mode` | Foreign keys on by default. `busy_timeout` is how long a session waits for a lock, in milliseconds. `transaction_mode` is `deferred` (the default), `immediate` or `exclusive`. See [SQLite options](#sqlite-options). |
 | `pgsql`: `sslmode`, `search_path` (or `schema`) | Passed to the URL as `sslmode` and `currentSchema`. |
 
 Any other key is kept as a string option for the connector. A value can read the environment: `${DB_PASSWORD}` fails if unset, `${DB_HOST:-localhost}` falls back, `$${X}` stays literal. A bad configuration throws `DatabaseConfigException`, which names the connection and key but never the value.
 
 Sources: `MapConfigSource`, `PropertiesConfigSource`, `EnvConfigSource` (`database.connections.main.password` reads `DATABASE_CONNECTIONS_MAIN_PASSWORD`) and `LayeredConfigSource` (the first source with the key wins). An environment layer overrides a key but cannot create a connection.
+
+### SQLite options
+
+`transaction_mode` sets how a transaction begins: `deferred`, `immediate` or `exclusive`, in any
+case. Unset, the driver's default applies, which is `deferred`. Diwan passes the value to the
+driver in the URL, unless the URL already names it.
+
+Use `immediate` when transactions read a row and then update it. Two such transactions under
+`deferred` both read first. The second one to write fails at once with a busy error, and
+`busy_timeout` does not help, because the lock it needs is only taken at the update. Under
+`immediate` the transaction takes the write lock at its start, so the second one waits up to
+`busy_timeout` and then proceeds.
+
+`busy_timeout` is passed to file databases too, when it is set. Unset, a file database keeps the
+driver's own timeout, and an in-memory database waits 30000 ms.
+
+A `DataSource` you supply is used as it is. Diwan builds no URL for it, so neither
+`transaction_mode` nor `busy_timeout` applies.
+
+On Android, the same option chooses the call that begins the transaction. Unset or `exclusive`
+uses `beginTransaction()`. `immediate` uses `beginTransactionNonExclusive()`. `deferred` is
+refused when the connection opens, because Android cannot begin a deferred transaction. In WAL
+mode, `immediate` and `exclusive` behave alike. Android already queues writers inside one app, so
+`immediate` there mostly matches the JDBC behaviour.
 
 On Android, build the configuration in code:
 
@@ -268,4 +292,4 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `getName` `getTablePrefix` `getDriverInfo` | `Connection` | Connection facts: the name the connection was built with, the prefix added to table names, and a description of the database behind it. | `conn.getTablePrefix()` |
 | `canDeferUntilCommit` | `Connection` | Tells whether `afterCommit(Runnable)` can wait for a commit on this connection. | `conn.canDeferUntilCommit()` |
 | `getDefaultConnection` | `DatabaseManager` | Returns the name of the connection `connection()` uses on this thread. | `db.getDefaultConnection()` |
-| `seed` | `DatabaseManager` | Runs a seeder with the default connection, outside a transaction. | `db.seed(new UserSeeder())` |
+| `seed` | `DatabaseManager` | Runs a seeder with the default connection, outside a transaction. See [Seeders](migrations.md#seeders). | `db.seed(UserSeeder::new)` |

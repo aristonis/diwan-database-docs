@@ -51,7 +51,6 @@ it behaves differently on purpose. Each row is a choice, not a missing feature.
 
 - Custom event classes, string event names and wildcard listeners.
 - `ObservedBy`; register an observer with `observe`.
-- Money types. Use `decimal` or an integer column of minor units.
 - MySQL, SQL Server and other databases. SQLite, PostgreSQL and Android are supported.
 
 See also [Models](models.md), [Relations](relations.md) and [Query builder](query-builder.md).

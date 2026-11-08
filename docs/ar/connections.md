@@ -50,12 +50,24 @@ Schema cache = db.schema("cache");       // built on first use
 | `username` و`password` | كلمة المرور تُقنَّع (masked) أينما طُبعت الإعدادات. |
 | `prefix` | بادئة الجداول، فارغة افتراضيًا. |
 | `strict_transactions` | `true` افتراضيًا. |
-| `sqlite`: `foreign_keys` و`busy_timeout` | المفاتيح الأجنبية مفعّلة افتراضيًا. و`busy_timeout` هو مدة انتظار الجلسة الثانية على قاعدة في الذاكرة، 30000 ms افتراضيًا. |
+| `sqlite`: `foreign_keys` و`busy_timeout` و`transaction_mode` | المفاتيح الأجنبية مفعّلة افتراضيًا. و`busy_timeout` هو مدة انتظار الجلسة للقفل بالميلي ثانية. و`transaction_mode` قيمته `deferred` (الافتراضية) أو `immediate` أو `exclusive`. انظر [خيارات SQLite](#sqlite). |
 | `pgsql`: `sslmode` و`search_path` (أو `schema`) | تُمرَّر إلى العنوان باسم `sslmode` و`currentSchema`. |
 
 أي مفتاح آخر يُحفظ كخيار نصي للـ connector. ويمكن أن تقرأ القيمة من البيئة: `${DB_PASSWORD}` يفشل إن لم يوجد، و`${DB_HOST:-localhost}` يرجع إلى قيمة بديلة، و`$${X}` يبقى نصًا حرفيًا. والإعداد الخاطئ يرمي `DatabaseConfigException`، وهو يسمّي الاتصال والمفتاح ولا يذكر القيمة أبدًا.
 
 المصادر: `MapConfigSource` و`PropertiesConfigSource` و`EnvConfigSource` (المفتاح `database.connections.main.password` يقرأ `DATABASE_CONNECTIONS_MAIN_PASSWORD`) و`LayeredConfigSource` (أول مصدر فيه المفتاح يفوز). طبقة البيئة تتجاوز مفتاحًا موجودًا لكنها لا تنشئ اتصالًا.
+
+### خيارات SQLite
+
+يحدد `transaction_mode` طريقة بدء المعاملة: `deferred` أو `immediate` أو `exclusive`، بأي حالة أحرف. إن لم يُضبط فالافتراضي هو افتراضي المشغّل (driver)، أي `deferred`. يمرّر Diwan القيمة إلى المشغّل في العنوان، إلا إذا كان العنوان يذكرها.
+
+استعمل `immediate` عندما تقرأ المعاملات صفًا ثم تحدّثه. معاملتان كهاتين تحت `deferred` تقرآن أولًا. والثانية التي تكتب تفشل فورًا بخطأ busy، ولا يفيد `busy_timeout` لأن القفل الذي تحتاجه لا يؤخذ إلا عند التحديث. تحت `immediate` تأخذ المعاملة قفل الكتابة عند بدايتها، فتنتظر الثانية حتى `busy_timeout` ثم تتابع.
+
+يُمرَّر `busy_timeout` إلى قواعد الملفات أيضًا إذا ضُبط. وإن لم يُضبط فقاعدة الملف تبقى على مهلة المشغّل نفسه، وقاعدة الذاكرة تنتظر 30000 ms.
+
+الـ `DataSource` الذي تقدّمه يُستعمل كما هو. لا يبني Diwan له عنوانًا، فلا ينطبق `transaction_mode` ولا `busy_timeout`.
+
+على Android يختار الخيار نفسه الاستدعاء الذي يبدأ المعاملة. بلا ضبط أو مع `exclusive` يُستعمل `beginTransaction()`. ومع `immediate` يُستعمل `beginTransactionNonExclusive()`. أما `deferred` فيُرفض عند فتح الاتصال، لأن Android لا يستطيع بدء معاملة deferred. في وضع WAL يتشابه `immediate` و`exclusive`. وAndroid يرتّب الكتّاب في طابور داخل التطبيق الواحد أصلًا، فـ`immediate` هناك يطابق في الغالب سلوك JDBC.
 
 على Android ابنِ الإعدادات في الكود:
 
@@ -268,4 +280,4 @@ DatabaseManager db = DatabaseManager.builder()
 | `getName` `getTablePrefix` `getDriverInfo` | `Connection` | معلومات الاتصال: الاسم الذي بُني به، والبادئة المضافة لأسماء الجداول، ووصف قاعدة البيانات خلفه. | `conn.getTablePrefix()` |
 | `canDeferUntilCommit` | `Connection` | تخبر هل يمكن لـ `afterCommit(Runnable)` الانتظار حتى commit على هذا الاتصال. | `conn.canDeferUntilCommit()` |
 | `getDefaultConnection` | `DatabaseManager` | تعيد اسم الاتصال الذي تستخدمه `connection()` في هذا الـ thread. | `db.getDefaultConnection()` |
-| `seed` | `DatabaseManager` | تشغّل seeder على الاتصال الافتراضي، خارج transaction. | `db.seed(new UserSeeder())` |
+| `seed` | `DatabaseManager` | تشغّل seeder على الاتصال الافتراضي، خارج transaction. انظر [الـ Seeders](migrations.md). | `db.seed(UserSeeder::new)` |

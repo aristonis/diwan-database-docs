@@ -49,6 +49,14 @@ try {
 
 المشغّل (driver) هو من يصنّف الفشل. والتصنيفات هي `DriverFailureKind.UNIQUE_VIOLATION` و`FOREIGN_KEY_VIOLATION` و`CONCURRENCY` و`CANCELLED` و`CONNECTION_LOST` و`COMMIT_OUTCOME_UNKNOWN`. إذا فشل `COMMIT` بسبب انقطاع الاتصال فقد يكون التثبيت تمّ. افحص قاعدة البيانات قبل أن تعيد المحاولة أو تتراجع.
 
+الـ `getCause()` في `QueryException` هو `DriverException`. ورسالته بصيغة ثابتة:
+
+```text
+Database failure (SQL state unknown, vendor code 5): concurrency, SQLITE_BUSY
+```
+
+الجزء الأول يظهر دائمًا. وبعد `: ` تأتي التصنيفات التي عرفها المشغّل بأحرف صغيرة، ثم اسم رمز نتيجة SQLite إذا كان Diwan يعرف الرمز. وإن لم يوجد تصنيف ولا رمز معروف فالرسالة هي الجزء الأول فقط. ولا تحمل الرسالة قيمًا ولا نص قاعدة البيانات أبدًا.
+
 ## ما لا تحتويه الرسائل أبدًا
 
 رسالة `QueryException` تبدو هكذا:
@@ -85,7 +93,7 @@ SQL: insert into users (email) values (?) (Connection: main, SQL state 23505, ve
 | الاستثناء | المعنى |
 |---|---|
 | `MigrationFailedException` | فشلت migration (تهجير قاعدة البيانات). السبب (cause) هو الفشل الحقيقي. و`phase()` تقول هل فشلت الـ migration نفسها أم سجلّها فقط. الـ migrations السابقة تبقى مطبّقة. |
-| `MigrationChecksumException` | عُدّلت migration سبق تشغيلها. لم يعمل شيء. أعدها كما كانت، أو اقبل التغيير بـ `repairChecksums`. |
+| `MigrationChecksumException` | عُدّلت migration سبق تشغيلها. لم يعمل شيء. أعدها كما كانت وغيّر الـ schema بـ migration جديدة. و`repairChecksums` للاسترداد فقط. |
 | `MissingMigrationsException` | rollback (تراجع) أو reset سيصل إلى سجلات migrations لا يملكها الـ migrator. انشر الكود الأحدث، أو ابنِ بـ `allowMissingOnRollback()`. |
 | `ForeignKeysOffRequiredException` | إعادة بناء جدول في SQLite تتطلب إطفاء المفاتيح الأجنبية. الـ migrator يعالجها. وفي غيره استعمل `Schema.withoutForeignKeyConstraints`. |
 | `ForeignKeyCheckException` | كسرت صفوف مفتاحًا أجنبيًا بعد إعادة بناء جدول. التغيير يُلغى. الرسالة تسمّي الجداول والأعداد ولا تذكر قيم الصفوف. |

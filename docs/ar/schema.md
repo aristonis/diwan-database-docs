@@ -42,7 +42,8 @@ schema.dropIfExists("people");                                  // drop(...) fai
 | أخرى | `booleanColumn`, `json`, `jsonb`, `binary`, `uuid`, `ulid`, `ipAddress`, `macAddress`, `enumColumn`, `set` |
 | اختصارات | `timestamps`, `softDeletes`, `rememberToken`, عائلة `morphs` |
 
-لا يوجد نوع للمال في Diwan. استخدم `decimal("amount", 12, 2)` أو عمودًا صحيحًا بالوحدات الصغرى. العمود `instant` يخزن microseconds كاملة على SQLite و`timestamptz` على PostgreSQL، وتحوّل بـ `Instants.toMicros` و`Instants.read`. SQLite ليس فيها ما يشبه `set`، فترفض هذا النوع.
+العمود `instant` يخزن microseconds كاملة على SQLite و`timestamptz` على PostgreSQL، وتحوّل بـ `Instants.toMicros` و`Instants.read`. SQLite ليس فيها ما يشبه `set`، فترفض هذا النوع.
+في النموذج اكتب العمود `instant` عبر `Casts.instant()`. أما أعمدة الطوابع (`created_at` و`updated_at` و`deleted_at`) فاضبط `TimestampFormat.INSTANT` على النموذج بدلًا من ذلك. انظر [النماذج](models.md#accessors-casts).
 
 ## المعدّلات (Modifiers)
 
@@ -54,6 +55,18 @@ table.integer("total").storedAs("qty * price");
 ```
 
 الشائعة منها `nullable` و`defaultValue` و`useCurrent` و`unique` و`index` و`primary` و`autoIncrement` و`unsigned` و`comment` و`virtualAs` و`storedAs`. SQLite تتجاهل `unsigned` و`comment`. وتضيف عمودًا `not null` بلا قيمة افتراضية فقط ما دام الجدول فارغًا. والـ enum على SQLite يرفض أي قيمة خارج قائمته، ويحافظ على هذه القاعدة عبر إعادات بناء الجدول اللاحقة.
+
+### الـ Collation (قواعد مقارنة النص)
+
+يمكن لعمود نصي أن يحدد الـ collation الذي تُقارن به قيمه وتُرتَّب. `Collation.BINARY` هو collation المقارنة بالبايتات، وهو قابل للنقل بين قواعد البيانات. تكتبه PostgreSQL على هيئة `"C"` وتكتبه SQLite على هيئة `BINARY`، فيعطي migration واحد الترتيب نفسه على الاثنتين.
+
+```java
+table.string("code").collation(Collation.BINARY);
+table.string("name").collation("nb_NO.utf8");    // the database's own name, written as given
+schema.table("codes", table -> table.string("code").collation(Collation.BINARY).change());
+```
+
+الاسم المعطى نصًا يُكتب كما هو، فيجب أن يكون collation تعرفه قاعدة البيانات. ولا يجوز أن يحوي علامة اقتباس أو حرف تحكم. على SQLite تحتفظ إعادة بناء الجدول بالـ collation الخاص بالعمود. أما `COLLATE` داخل قيد جدول، مثل `unique (email collate nocase)`، فما زال مرفوضًا.
 
 ### تغيير عمود
 
@@ -69,6 +82,7 @@ schema.table("posts", table -> table.string("title", 500).nullable().change());
 
 ```java
 table.index("user_id", "title");                  // columns in order
+table.index(List.of("state", "next_fire_at"), "alarms_state_next");   // named index
 table.unique(List.of("slug", "tenant_id"), "posts_slug_tenant");
 table.primary("a", "b");
 table.dropIndex("posts_user_id_title_index");
@@ -88,6 +102,13 @@ table.dropConstrainedForeignId("user_id");                       // key, index a
 ```
 
 إجراءات الحذف والتحديث هي `cascade` و`restrict` و`set null` و`no action`، ولكل منها دالة تبدأ بـ `on...`.
+
+تحدد PostgreSQL طول الاسم بـ 63 بايتًا، وقد يتجاوز الاسم الافتراضي لمفتاح على جدول طويل الاسم هذا الحد. سمِّ المفتاح بنفسك بالوسيط الثالث لـ `constrained`، أو بالوسيط الثاني لـ `references`:
+
+```java
+table.foreignId("attribute_id").constrained("product_attribute_values", "id", "pav_attribute_fk");
+table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values");
+```
 
 ## قيود check والأعمدة المولَّدة وSQL الخام
 
@@ -159,3 +180,5 @@ List<LoggedQuery> plan = schema.pretend(s -> s.create("t", table -> table.id()))
 | `onUpdate` `cascadeOnUpdate` `restrictOnUpdate` `noActionOnUpdate` `nullOnUpdate` `restrictOnDelete` `noActionOnDelete` | `ForeignKeyDefinition` | إجراءات المفتاح الأجنبي: `onUpdate` تحدد ما يحدث عند تغيّر المفتاح المرجعي، والاختصارات تعمل cascade أو restrict (الرفض) أو الرفض في نهاية الجملة (`noAction...`) أو ضبط NULL. | `fk.restrictOnDelete()` |
 | `deleteAction` `updateAction` `referencedTable` `referencedColumns` | `ForeignKeyDefinition` | قراءة تعريف مفتاح أجنبي: إجراء الحذف والتحديث إن ضُبط، والجدول المرجعي، والأعمدة المرجعية. | `fk.referencedTable()` |
 | `on` | `Schema` | تعيد باني الـ schema هذا مربوطًا باتصال آخر لقاعدة البيانات نفسها، مثل اتصال معاملة. وترمي `IllegalArgumentException` مع نوع آخر من قواعد البيانات. | `schema.on(tx)` |
+| `collation` | `ColumnDefinition` و`ForeignIdColumnDefinition` | تضبط الـ collation لعمود نصي، يُعطى على هيئة `Collation` أو اسم collation في قاعدة البيانات. وعلى `ColumnDefinition` تعيده `collation()` بلا وسيط على هيئة `Optional`. | `column.collation(Collation.BINARY)` |
+| `of` `name` `isPortable` | `Collation` | `of` تنشئ collation تعرفه قاعدة البيانات باسمه. و`name` تعيد الاسم، و`isPortable` تبيّن هل القيمة هي `Collation.BINARY`. | `Collation.of("nb_NO.utf8")` |
