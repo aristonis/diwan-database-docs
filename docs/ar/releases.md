@@ -5,6 +5,13 @@
 صفحة على [GitHub Releases](https://github.com/aristonis/diwan-database/releases) فيها الملاحظات نفسها
 وملفات الإصدار.
 
+## 0.3.1 (2026-11-09)
+
+إصدار إصلاح لـ 0.3.0. لا شيء ينكسر.
+
+- **SQLite وAndroid:** لم يعد `truncate` ووضع الإفراغ في `RefreshDatabase` يفشلان على جدول يشير مفتاح `restrictOnDelete()` فيه إلى نفسه. انظر [منشئ الاستعلامات](query-builder.md).
+- **PostgreSQL:** خرق restrict (حالة SQL رقم 23001) صار `ForeignKeyViolationException` يسمّي قيده. انظر [الأخطاء](errors.md).
+
 ## 0.3.0 (2026-11-09)
 
 ما طلبته تطبيقات بُنيت على 0.2.0. يضيف:

@@ -5,6 +5,15 @@ The full list of changes in each version is in the
 also has a page on [GitHub Releases](https://github.com/aristonis/diwan-database/releases), with the
 same notes and the release files.
 
+## 0.3.1 (2026-11-09)
+
+A fix release for 0.3.0. Nothing breaks.
+
+- **SQLite and Android:** `truncate` and `RefreshDatabase` truncate mode no longer fail on a table
+  whose `restrictOnDelete()` key refers to itself. See [Query builder](query-builder.md).
+- **PostgreSQL:** a restrict violation (SQL state 23001) is a `ForeignKeyViolationException` that
+  names its constraint. See [Errors](errors.md).
+
 ## 0.3.0 (2026-11-09)
 
 What apps built on 0.2.0 asked for. It adds:

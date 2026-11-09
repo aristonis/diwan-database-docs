@@ -1,13 +1,13 @@
 # API reference
 
-The Javadoc of each module, version 0.3.0, on javadoc.io:
+The Javadoc of each module, version 0.3.1, on javadoc.io:
 
-[`diwan-database`](https://javadoc.io/doc/org.aristonis/diwan-database/0.3.0) · [`diwan-database-sqlite`](https://javadoc.io/doc/org.aristonis/diwan-database-sqlite/0.3.0) · [`diwan-database-pgsql`](https://javadoc.io/doc/org.aristonis/diwan-database-pgsql/0.3.0) · [`diwan-database-android`](https://javadoc.io/doc/org.aristonis/diwan-database-android/0.3.0) · [`diwan-database-testing`](https://javadoc.io/doc/org.aristonis/diwan-database-testing/0.3.0) · [`diwan-database-eloquent`](https://javadoc.io/doc/org.aristonis/diwan-database-eloquent/0.3.0)
+[`diwan-database`](https://javadoc.io/doc/org.aristonis/diwan-database/0.3.1) · [`diwan-database-sqlite`](https://javadoc.io/doc/org.aristonis/diwan-database-sqlite/0.3.1) · [`diwan-database-pgsql`](https://javadoc.io/doc/org.aristonis/diwan-database-pgsql/0.3.1) · [`diwan-database-android`](https://javadoc.io/doc/org.aristonis/diwan-database-android/0.3.1) · [`diwan-database-testing`](https://javadoc.io/doc/org.aristonis/diwan-database-testing/0.3.1) · [`diwan-database-eloquent`](https://javadoc.io/doc/org.aristonis/diwan-database-eloquent/0.3.1)
 
 You can also build one combined site for every module, with search across them, from the
 repository with `./gradlew apiDocs`.
 
-All modules use the group `org.aristonis` and the version `0.3.0`. The packages sit under
+All modules use the group `org.aristonis` and the version `0.3.1`. The packages sit under
 `org.aristonis.diwan.database`.
 
 | Module (artifact) | Add it when | Main entry classes |
