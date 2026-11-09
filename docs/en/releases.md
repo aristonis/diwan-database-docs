@@ -17,7 +17,7 @@ What apps built on 0.2.0 asked for. It adds:
 - **Schema:** table and view listing, `dropAllTables`, `dropAllViews` and `Migrator.fresh()`.
 - **Errors:** constraint names, columns and stable `DWN-` error codes on driver failures.
 
-Nothing breaks.
+Nothing breaks; see the [upgrade guide](upgrade.md) for the one message change.
 
 ## 0.2.0 (2026-11-08)
 
