@@ -8,11 +8,18 @@ Diwan Database هي نسخة Java من طبقة قواعد البيانات في
 
 يطلب كودك من `DatabaseManager` ما يحتاجه. الـ driver قيمة في الإعداد، فالانتقال من SQLite إلى PostgreSQL يغيّر الإعداد لا الكود.
 
-```java
-QueryFactory db = manager.query();      // from the connection's configuration, no driver class in your code
-db.table("users").insert(Map.of("email", "ada@example.com"));
-List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).get();
-```
+=== "Java"
+    ```java
+    QueryFactory db = manager.query();      // from the connection's configuration, no driver class in your code
+    db.table("users").insert(Map.of("email", "ada@example.com"));
+    List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val db = manager.query()      // from the connection's configuration, no driver class in your code
+    db.table("users").insert(mapOf("email" to "ada@example.com"))
+    val rows = db.table("users").orderByDesc("id").limit(10).get()
+    ```
 
 تبني صفحة [البدء](getting-started.md) الـ manager.
 
@@ -51,6 +58,6 @@ List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).g
 | تشغّل على هاتف | [Android](android.md) |
 | تعرف أين تختلف Diwan عن Laravel | [الفروق عن Laravel](differences.md) |
 | تلتقط الأخطاء وتفهمها | [الأخطاء](errors.md) |
-| تبحث عن صنف أو دالة | [مرجع API](api.md) |
+| تبحث عن صنف أو دالة | [مرجع API](api-reference.md) |
 | تنتقل بين الإصدارات | [الترقية](upgrade.md) |
 | تفهم مصطلحًا | [المسرد](glossary.md) |

@@ -36,16 +36,28 @@ A `QueryException` means the database refused a statement. It carries:
 
 The subclasses extend `QueryException`, so one `catch` covers all of them. Catch the specific type first:
 
-```java
-try {
-    db.insert("insert into users (email) values (?)", email);
-} catch (UniqueConstraintViolationException e) {
-    return "That email is already registered.";
-} catch (QueryException e) {
-    LOG.warning("insert failed on " + e.getConnectionName() + ", state " + e.sqlState().orElse("unknown"));
-    throw e;
-}
-```
+=== "Java"
+    ```java
+    try {
+        db.insert("insert into users (email) values (?)", email);
+    } catch (UniqueConstraintViolationException e) {
+        return "That email is already registered.";
+    } catch (QueryException e) {
+        LOG.warning("insert failed on " + e.getConnectionName() + ", state " + e.sqlState().orElse("unknown"));
+        throw e;
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    try {
+        db.insert("insert into users (email) values (?)", email)
+    } catch (e: UniqueConstraintViolationException) {
+        return "That email is already registered."
+    } catch (e: QueryException) {
+        LOG.warning("insert failed on ${e.connectionName}, state ${e.sqlState().orElse("unknown")}")
+        throw e
+    }
+    ```
 
 The driver classifies the failure. The classes are `DriverFailureKind.UNIQUE_VIOLATION`, `FOREIGN_KEY_VIOLATION`, `CHECK_VIOLATION`, `NOT_NULL_VIOLATION`, `CONCURRENCY`, `CANCELLED`, `CONNECTION_LOST` and `COMMIT_OUTCOME_UNKNOWN`. If `COMMIT` fails with a lost connection, the commit may have landed. Check the database before you retry or undo.
 
@@ -85,21 +97,35 @@ By default it holds no binding values and no database error text, because both c
 index name, and the columns involved. From a `QueryException`, reach the driver exception with
 `getCause()`:
 
-```java
-try {
-    db.insert("insert into users (email) values (?)", email);
-} catch (QueryException e) {
-    DiwanError error = ((DriverException) e.getCause()).error();
-    switch (error.code()) {
-        case "DWN-CST-0001":
-            return "That email is already registered.";
-        case "DWN-TXN-0001":
-            return "Please try again.";
-        default:
-            throw e;
+=== "Java"
+    ```java
+    try {
+        db.insert("insert into users (email) values (?)", email);
+    } catch (QueryException e) {
+        DiwanError error = ((DriverException) e.getCause()).error();
+        switch (error.code()) {
+            case "DWN-CST-0001":
+                return "That email is already registered.";
+            case "DWN-TXN-0001":
+                return "Please try again.";
+            default:
+                throw e;
+        }
     }
-}
-```
+    ```
+=== "Kotlin"
+    ```kotlin
+    try {
+        db.insert("insert into users (email) values (?)", email)
+    } catch (e: QueryException) {
+        val error = (e.cause as DriverException).error()
+        return when (error.code()) {
+            "DWN-CST-0001" -> "That email is already registered."
+            "DWN-TXN-0001" -> "Please try again."
+            else -> throw e
+        }
+    }
+    ```
 
 | Code | Kind | Meaning |
 |---|---|---|

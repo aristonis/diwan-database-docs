@@ -27,6 +27,7 @@ theme:
     - navigation.indexes
     - navigation.top
     - content.code.copy
+    - content.tabs.link
     - search.suggest
     - search.highlight
   icon:
@@ -40,6 +41,7 @@ nav:
   - Getting started: getting-started.md
   - Guides:
       - Connections and transactions: connections.md
+      - Configuration: configuration.md
       - Query builder: query-builder.md
       - Schema builder: schema.md
       - Migrations: migrations.md
@@ -57,7 +59,7 @@ nav:
       - Report an issue: ai/report-issue.md
   - Differences from Laravel: differences.md
   - Errors and exceptions: errors.md
-  - API reference: api.md
+  - API reference: api-reference.md
   - Upgrade guide: upgrade.md
   - Releases: releases.md
   - Roadmap: roadmap.md
@@ -82,6 +84,12 @@ plugins:
           locale: ar
           build: true
 
+exclude_docs: |
+  api/
+
+hooks:
+  - hooks/copy_api.py
+
 extra:
   generator: false
   social:
@@ -94,6 +102,8 @@ markdown_extensions:
   - admonition
   - pymdownx.details
   - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
   - tables
   - pymdownx.highlight:
       anchor_linenums: true

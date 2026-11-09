@@ -4,33 +4,64 @@
 بلا reflection (الانعكاس في Java)، فلا يستطيع R8 (أدوات تصغير الكود وتشويشه في Android) كسرها. تفحص Diwan الخريطة مرة واحدة لكل صنف عند أول استعمال،
 والخطأ يفشل بـ `InvalidRelationException` يسمّي النموذج والعلاقة.
 
-```java
-public final class User extends Model {
-    public static final ModelQuery<User> query = ModelQuery.of(User.class, User::new);
+=== "Java"
+    ```java
+    public final class User extends Model {
+        public static final ModelQuery<User> query = ModelQuery.of(User.class, User::new);
 
-    @Override
-    protected RelationMap<?> relations() {
-        return RelationMap.of(User.class).add("posts", User::posts);
+        @Override
+        protected RelationMap<?> relations() {
+            return RelationMap.of(User.class).add("posts", User::posts);
+        }
+
+        public HasMany<Post> posts() {
+            return hasMany(Post.class, "user_id");      // hasOne works the same way
+        }
     }
 
-    public HasMany<Post> posts() {
-        return hasMany(Post.class, "user_id");      // hasOne works the same way
-    }
-}
+    public final class Post extends Model {
+        public static final ModelQuery<Post> query = ModelQuery.of(Post.class, Post::new);
 
-public final class Post extends Model {
-    public static final ModelQuery<Post> query = ModelQuery.of(Post.class, Post::new);
+        @Override
+        protected RelationMap<?> relations() {
+            return RelationMap.of(Post.class).add("author", Post::author);
+        }
 
-    @Override
-    protected RelationMap<?> relations() {
-        return RelationMap.of(Post.class).add("author", Post::author);
+        public BelongsTo<User> author() {
+            return belongsTo(User.class, "user_id");    // the foreign key is required
+        }
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class User : Model() {
+        override fun relations(): RelationMap<*> {
+            return RelationMap.of(User::class.java).add("posts", User::posts)
+        }
+
+        fun posts(): HasMany<Post> {
+            return hasMany(Post::class.java, "user_id")      // hasOne works the same way
+        }
+
+        companion object {
+            val query: ModelQuery<User> = ModelQuery.of(User::class.java, ::User)
+        }
     }
 
-    public BelongsTo<User> author() {
-        return belongsTo(User.class, "user_id");    // the foreign key is required
+    class Post : Model() {
+        override fun relations(): RelationMap<*> {
+            return RelationMap.of(Post::class.java).add("author", Post::author)
+        }
+
+        fun author(): BelongsTo<User> {
+            return belongsTo(User::class.java, "user_id")    // the foreign key is required
+        }
+
+        companion object {
+            val query: ModelQuery<Post> = ModelQuery.of(Post::class.java, ::Post)
+        }
     }
-}
-```
+    ```
 
 ## أنواع العلاقات
 
@@ -46,11 +77,18 @@ public final class Post extends Model {
 
 القراءة الكسولة (lazy loading) تعمل مرة واحدة وتبقي النتيجة في النموذج. و`getAttribute("posts")` لا تحمّل علاقة أبدًا.
 
-```java
-ModelCollection<Post> posts = user.relatedMany("posts");   // select * from posts where user_id = ?
-User author = post.related("author");                      // null when there is none
-ModelCollection<Post> recent = user.posts().where("published", true).latest().get();
-```
+=== "Java"
+    ```java
+    ModelCollection<Post> posts = user.relatedMany("posts");   // select * from posts where user_id = ?
+    User author = post.related("author");                      // null when there is none
+    ModelCollection<Post> recent = user.posts().where("published", true).latest().get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val posts: ModelCollection<Post> = user.relatedMany("posts")   // select * from posts where user_id = ?
+    val author: User? = post.related("author")                     // null when there is none
+    val recent: ModelCollection<Post> = user.posts().where("published", true).latest().get()
+    ```
 
 تعيد `withDefault()` على `hasOne` أو `belongsTo` نموذجًا فارغًا حين لا يوجد شيء.
 
@@ -59,14 +97,24 @@ ModelCollection<Post> recent = user.posts().where("published", true).latest().ge
 حمّل مسبقًا لتتجنب استعلامًا لكل نموذج. تتداخل المسارات بالنقاط، و`name:col,...` تختار أعمدة (يُضاف المفتاح المطابق)،
 والقيد يضيّق استعلام العلاقة:
 
-```java
-ModelCollection<User> all = users.with("posts.comments").get();   // three queries in all
-users.with("posts", q -> q.where("published", true)).get();
-users.query().with("posts:id,title").paginate(20, 1);
+=== "Java"
+    ```java
+    ModelCollection<User> all = users.with("posts.comments").get();   // three queries in all
+    users.with("posts", q -> q.where("published", true)).get();
+    users.query().with("posts:id,title").paginate(20, 1);
 
-all.load("posts.author");        // on a collection already read
-user.loadMissing("posts");       // only what is not loaded yet
-```
+    all.load("posts.author");        // on a collection already read
+    user.loadMissing("posts");       // only what is not loaded yet
+    ```
+=== "Kotlin"
+    ```kotlin
+    val all: ModelCollection<User> = users.with("posts.comments").get()   // three queries in all
+    users.with("posts") { q -> q.where("published", true) }.get()
+    users.query().with("posts:id,title").paginate(20, 1)
+
+    all.load("posts.author")        // on a collection already read
+    user.loadMissing("posts")       // only what is not loaded yet
+    ```
 
 تُهمَل المفاتيح الفارغة (null)، وتُقسَّم قوائم المفاتيح الطويلة كي تبقى تحت حد المعاملات في SQLite وPostgreSQL.
 القيد المسبق ينفَّذ مرة لكل دفعة (batch) مفاتيح زائد مرة، فاجعله بلا آثار جانبية. ولا يجوز له ضبط `limit` أو `offset`.
@@ -75,35 +123,63 @@ user.loadMissing("posts");       // only what is not loaded yet
 لاكتشاف مشكلة N+1 (استعلام إضافي لكل صف) أثناء التطوير، ارفض القراءات الكسولة على النماذج الآتية من نتيجة متعددة الصفوف.
 هذا إعداد على مستوى العملية كلها؛ استدعِه مرة عند بدء التشغيل:
 
-```java
-ModelQuery.preventLazyLoading(true);
-users.query().get().get(0).relatedMany("posts");   // LazyLoadingViolationException
-```
+=== "Java"
+    ```java
+    ModelQuery.preventLazyLoading(true);
+    users.query().get().get(0).relatedMany("posts");   // LazyLoadingViolationException
+    ```
+=== "Kotlin"
+    ```kotlin
+    ModelQuery.preventLazyLoading(true)
+    users.query().get()[0].relatedMany<Post>("posts")   // LazyLoadingViolationException
+    ```
 
 ## has وwhereHas والتجميعات
 
-```java
-users.query().has("posts").get();
-users.query().has("posts", ">=", 3).get();
-users.query().whereHas("posts", q -> q.where("title", "like", "Java%")).get();
-users.query().doesntHave("posts.comments").get();
-users.query().whereRelation("posts", "published", true).get();
-```
+=== "Java"
+    ```java
+    users.query().has("posts").get();
+    users.query().has("posts", ">=", 3).get();
+    users.query().whereHas("posts", q -> q.where("title", "like", "Java%")).get();
+    users.query().doesntHave("posts.comments").get();
+    users.query().whereRelation("posts", "published", true).get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    users.query().has("posts").get()
+    users.query().has("posts", ">=", 3).get()
+    users.query().whereHas("posts") { q -> q.where("title", "like", "Java%") }.get()
+    users.query().doesntHave("posts.comments").get()
+    users.query().whereRelation("posts", "published", true).get()
+    ```
 
 تُترجم هذه إلى استعلامات فرعية (subqueries) من نوع `exists`. عُدّ الصفوف المرتبطة أو اجمعها أو افحصها دون تحميلها. كل استدعاء
 يضيف استعلامًا فرعيًا واحدًا، اسمه `<relation>_<function>_<column>` أو ما تحدده بـ `as`:
 
-```java
-users.query()
+=== "Java"
+    ```java
+    users.query()
+            .withCount("posts")                                        // posts_count
+            .withCount(Map.of("posts as published", q -> q.where("published", true)))
+            .withSum("orders", "total")                                // orders_sum_total
+            .withExists("posts")                                       // posts_exists, a Boolean
+            .get();
+
+    all.loadCount("posts");              // the same aggregates on models already read
+    user.loadExists(Map.of("posts", q -> q.where("published", true)));
+    ```
+=== "Kotlin"
+    ```kotlin
+    users.query()
         .withCount("posts")                                        // posts_count
-        .withCount(Map.of("posts as published", q -> q.where("published", true)))
+        .withCount(mapOf("posts as published" to Consumer<EloquentBuilder<*>> { q -> q.where("published", true) }))
         .withSum("orders", "total")                                // orders_sum_total
         .withExists("posts")                                       // posts_exists, a Boolean
-        .get();
+        .get()
 
-all.loadCount("posts");              // the same aggregates on models already read
-user.loadExists(Map.of("posts", q -> q.where("published", true)));
-```
+    all.loadCount("posts")              // the same aggregates on models already read
+    user.loadExists(mapOf("posts" to Consumer<EloquentBuilder<*>> { q -> q.where("published", true) }))
+    ```
 
 تعمل `withMin` و`withMax` و`withAvg` و`withAggregate(relation, column, function)` بالطريقة نفسها. بعد `withCount` استعمل `addSelect`
 لا `select`: فـ `select` تستبدل الأعمدة وتُسقط التجميع.
@@ -119,27 +195,46 @@ user.loadExists(Map.of("posts", q -> q.where("published", true)));
 
 ## عبر وسيط، وmorph، وواحد من متعدد
 
-```java
-public HasManyThrough<Post> posts() {
-    return hasManyThrough(Post.class, User.class);   // posts of the users of this country
-}
+=== "Java"
+    ```java
+    public HasManyThrough<Post> posts() {
+        return hasManyThrough(Post.class, User.class);   // posts of the users of this country
+    }
 
-public MorphMany<Comment> comments() { return morphMany(Comment.class, "commentable"); }
-public MorphTo<Model> commentable()  { return morphTo("commentable"); }
-public HasOne<Order> latestOrder()   { return hasOne(Order.class).latestOfMany(); }
-```
+    public MorphMany<Comment> comments() { return morphMany(Comment.class, "commentable"); }
+    public MorphTo<Model> commentable()  { return morphTo("commentable"); }
+    public HasOne<Order> latestOrder()   { return hasOne(Order.class).latestOfMany(); }
+    ```
+=== "Kotlin"
+    ```kotlin
+    fun posts(): HasManyThrough<Post> {
+        return hasManyThrough(Post::class.java, User::class.java)   // posts of the users of this country
+    }
+
+    fun comments(): MorphMany<Comment> = morphMany(Comment::class.java, "commentable")
+    fun commentable(): MorphTo<Model> = morphTo("commentable")
+    fun latestOrder(): HasOne<Order> = hasOne(Order::class.java).latestOfMany()
+    ```
 
 علاقة through تنشئ الصف البعيد دون ربطه بالصف الوسيط؛ أنشئ الصف الوسيط بنفسك. واستعمل دوال البحث والصفحات والمُكرِّرات
 الخاصة بعلاقة through كأي علاقة أخرى.
 
 علاقة morph تخزّن اسمًا مستعارًا (alias) في `commentable_type`. سجّل كل أب مرة واحدة عند بدء التشغيل:
 
-```java
-Map<String, Class<? extends Model>> map = new LinkedHashMap<>();
-map.put("post", Post.class);
-map.put("video", Video.class);
-MorphMap.morphMap(map);
-```
+=== "Java"
+    ```java
+    Map<String, Class<? extends Model>> map = new LinkedHashMap<>();
+    map.put("post", Post.class);
+    map.put("video", Video.class);
+    MorphMap.morphMap(map);
+    ```
+=== "Kotlin"
+    ```kotlin
+    val map = LinkedHashMap<String, Class<out Model>>()
+    map["post"] = Post::class.java
+    map["video"] = Video::class.java
+    MorphMap.morphMap(map)
+    ```
 
 بلا alias ترمي Diwan الاستثناء `ClassMorphViolationException`، إلا إذا اخترت عدم الإلزام بـ `MorphMap.requireMorphMap(false)`.
 رشّح على `morphTo` بـ `whereHasMorph` و`hasMorph` و`whereMorphedTo`، وحمّل مسبقًا لكل صنف أب بـ `withMorph`.
@@ -152,34 +247,61 @@ MorphMap.morphMap(map);
 
 يُضبط المفتاح الأجنبي (foreign key) عنك. الأب الذي لا مفتاح له بعد يرمي `IllegalStateException` قبل أي SQL.
 
-```java
-Post post = user.posts().create(Map.of("title", "Hello"));   // user_id set
-user.posts().saveMany(List.of(draftA, draftB));             // no transaction
-post.author().associate(otherUser);                         // sets user_id and the relation
-post.author().dissociate();
-```
+=== "Java"
+    ```java
+    Post post = user.posts().create(Map.of("title", "Hello"));   // user_id set
+    user.posts().saveMany(List.of(draftA, draftB));             // no transaction
+    post.author().associate(otherUser);                         // sets user_id and the relation
+    post.author().dissociate();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val post = user.posts().create(mapOf("title" to "Hello"))   // user_id set
+    user.posts().saveMany(listOf(draftA, draftB))              // no transaction
+    post.author().associate(otherUser)                         // sets user_id and the relation
+    post.author().dissociate()
+    ```
 
 ## الكتابة في جدول الربط (pivot)
 
 تقرأ `belongsToMany` عبر جدول ربط، افتراضيًا `role_user` بالمفتاحين `user_id` و`role_id`. يحمل كل صف مرتبط صفَّ الربط الخاص به باسم `pivot`.
 
-```java
-public BelongsToMany<Role> roles() {
-    return belongsToMany(Role.class).withPivot("status").withTimestamps();
-}
+=== "Java"
+    ```java
+    public BelongsToMany<Role> roles() {
+        return belongsToMany(Role.class).withPivot("status").withTimestamps();
+    }
 
-user.roles().attach(5, Map.of("status", "active"));
-user.roles().detach(5);
-SyncResult changes = user.roles().sync(List.of(1, 2, 3));
-changes.getAttached();   // ids added
-changes.getDetached();   // ids removed
-user.roles().syncWithoutDetaching(List.of(4));
-user.roles().toggle(List.of(1, 9));
-user.roles().updateExistingPivot(1, Map.of("status", "paused"));
+    user.roles().attach(5, Map.of("status", "active"));
+    user.roles().detach(5);
+    SyncResult changes = user.roles().sync(List.of(1, 2, 3));
+    changes.getAttached();   // ids added
+    changes.getDetached();   // ids removed
+    user.roles().syncWithoutDetaching(List.of(4));
+    user.roles().toggle(List.of(1, 9));
+    user.roles().updateExistingPivot(1, Map.of("status", "paused"));
 
-Pivot.of(user.roles().first().orElseThrow()).getString("status");   // read the joining row
-user.roles().wherePivot("status", "active").get();
-```
+    Pivot.of(user.roles().first().orElseThrow()).getString("status");   // read the joining row
+    user.roles().wherePivot("status", "active").get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    fun roles(): BelongsToMany<Role> {
+        return belongsToMany(Role::class.java).withPivot("status").withTimestamps()
+    }
+
+    user.roles().attach(5, mapOf("status" to "active"))
+    user.roles().detach(5)
+    val changes: SyncResult = user.roles().sync(listOf(1, 2, 3))
+    changes.attached   // ids added
+    changes.detached   // ids removed
+    user.roles().syncWithoutDetaching(listOf(4))
+    user.roles().toggle(listOf(1, 9))
+    user.roles().updateExistingPivot(1, mapOf("status" to "paused"))
+
+    Pivot.of(user.roles().first().orElseThrow()).getString("status")   // read the joining row
+    user.roles().wherePivot("status", "active").get()
+    ```
 
 يمكن أن تكون `ids` معرّفًا أو نموذجًا مرتبطًا أو مجموعة من أيٍّ منهما أو map من المعرّف إلى خصائص pivot (جدول الربط في علاقة متعدد لمتعدد). أنشئ فهرسًا على جدول الربط:
 فريدًا على (`user_id`, `role_id`) وآخر على `role_id`. سلسلة شروط `or` في قراءة متعدد لمتعدد لا تُجمَّع، فجمّعها بدالة
@@ -190,15 +312,25 @@ user.roles().wherePivot("status", "active").get();
 
 سمِّ العلاقات في `touches()` لتحديث `updated_at` للأب حين يتغيّر الابن:
 
-```java
-public final class Comment extends Model {
-    @Override
-    protected Set<String> touches() { return Collections.singleton("post"); }
-}
+=== "Java"
+    ```java
+    public final class Comment extends Model {
+        @Override
+        protected Set<String> touches() { return Collections.singleton("post"); }
+    }
 
-comment.save();    // then: update posts set updated_at = ? where posts.id = ?
-Model.withoutTouching(Post.class, () -> importComments(rows));   // this thread only
-```
+    comment.save();    // then: update posts set updated_at = ? where posts.id = ?
+    Model.withoutTouching(Post.class, () -> importComments(rows));   // this thread only
+    ```
+=== "Kotlin"
+    ```kotlin
+    class Comment : Model() {
+        override fun touches(): Set<String> = Collections.singleton("post")
+    }
+
+    comment.save()    // then: update posts set updated_at = ? where posts.id = ?
+    Model.withoutTouching(Post::class.java) { importComments(rows) }   // this thread only
+    ```
 
 الحفظ الذي غيّر شيئًا، والحذف، ينفّذ كلٌّ منهما `UPDATE` خامًا واحدًا لكل مالك يُلمَس، بلا أحداث وبلا `SELECT`. يحتفظ كائن المالك في الذاكرة
 بـ `updated_at` القديم؛ استدعِ `refresh()` لإعادة تحميله. غلّف الاستيراد الكبير بـ `withoutTouching`.

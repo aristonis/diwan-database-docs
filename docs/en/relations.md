@@ -5,33 +5,64 @@ as `"posts"` reaches the method without reflection, so R8 cannot break it. Diwan
 once per class on first use, and a mistake fails with `InvalidRelationException` naming the model
 and the relation.
 
-```java
-public final class User extends Model {
-    public static final ModelQuery<User> query = ModelQuery.of(User.class, User::new);
+=== "Java"
+    ```java
+    public final class User extends Model {
+        public static final ModelQuery<User> query = ModelQuery.of(User.class, User::new);
 
-    @Override
-    protected RelationMap<?> relations() {
-        return RelationMap.of(User.class).add("posts", User::posts);
+        @Override
+        protected RelationMap<?> relations() {
+            return RelationMap.of(User.class).add("posts", User::posts);
+        }
+
+        public HasMany<Post> posts() {
+            return hasMany(Post.class, "user_id");      // hasOne works the same way
+        }
     }
 
-    public HasMany<Post> posts() {
-        return hasMany(Post.class, "user_id");      // hasOne works the same way
-    }
-}
+    public final class Post extends Model {
+        public static final ModelQuery<Post> query = ModelQuery.of(Post.class, Post::new);
 
-public final class Post extends Model {
-    public static final ModelQuery<Post> query = ModelQuery.of(Post.class, Post::new);
+        @Override
+        protected RelationMap<?> relations() {
+            return RelationMap.of(Post.class).add("author", Post::author);
+        }
 
-    @Override
-    protected RelationMap<?> relations() {
-        return RelationMap.of(Post.class).add("author", Post::author);
+        public BelongsTo<User> author() {
+            return belongsTo(User.class, "user_id");    // the foreign key is required
+        }
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class User : Model() {
+        override fun relations(): RelationMap<*> {
+            return RelationMap.of(User::class.java).add("posts", User::posts)
+        }
+
+        fun posts(): HasMany<Post> {
+            return hasMany(Post::class.java, "user_id")      // hasOne works the same way
+        }
+
+        companion object {
+            val query: ModelQuery<User> = ModelQuery.of(User::class.java, ::User)
+        }
     }
 
-    public BelongsTo<User> author() {
-        return belongsTo(User.class, "user_id");    // the foreign key is required
+    class Post : Model() {
+        override fun relations(): RelationMap<*> {
+            return RelationMap.of(Post::class.java).add("author", Post::author)
+        }
+
+        fun author(): BelongsTo<User> {
+            return belongsTo(User::class.java, "user_id")    // the foreign key is required
+        }
+
+        companion object {
+            val query: ModelQuery<Post> = ModelQuery.of(Post::class.java, ::Post)
+        }
     }
-}
-```
+    ```
 
 ## Relation types
 
@@ -48,11 +79,18 @@ public final class Post extends Model {
 A lazy read runs once and keeps the result on the model. `getAttribute("posts")` never loads a
 relation.
 
-```java
-ModelCollection<Post> posts = user.relatedMany("posts");   // select * from posts where user_id = ?
-User author = post.related("author");                      // null when there is none
-ModelCollection<Post> recent = user.posts().where("published", true).latest().get();
-```
+=== "Java"
+    ```java
+    ModelCollection<Post> posts = user.relatedMany("posts");   // select * from posts where user_id = ?
+    User author = post.related("author");                      // null when there is none
+    ModelCollection<Post> recent = user.posts().where("published", true).latest().get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val posts: ModelCollection<Post> = user.relatedMany("posts")   // select * from posts where user_id = ?
+    val author: User? = post.related("author")                     // null when there is none
+    val recent: ModelCollection<Post> = user.posts().where("published", true).latest().get()
+    ```
 
 `withDefault()` on a `hasOne` or `belongsTo` returns an empty model when nothing is found.
 
@@ -61,14 +99,24 @@ ModelCollection<Post> recent = user.posts().where("published", true).latest().ge
 Eager load to avoid one query per model. Paths nest with dots, `name:col,...` selects columns (the
 matching key is added), and a constraint narrows the related query:
 
-```java
-ModelCollection<User> all = users.with("posts.comments").get();   // three queries in all
-users.with("posts", q -> q.where("published", true)).get();
-users.query().with("posts:id,title").paginate(20, 1);
+=== "Java"
+    ```java
+    ModelCollection<User> all = users.with("posts.comments").get();   // three queries in all
+    users.with("posts", q -> q.where("published", true)).get();
+    users.query().with("posts:id,title").paginate(20, 1);
 
-all.load("posts.author");        // on a collection already read
-user.loadMissing("posts");       // only what is not loaded yet
-```
+    all.load("posts.author");        // on a collection already read
+    user.loadMissing("posts");       // only what is not loaded yet
+    ```
+=== "Kotlin"
+    ```kotlin
+    val all: ModelCollection<User> = users.with("posts.comments").get()   // three queries in all
+    users.with("posts") { q -> q.where("published", true) }.get()
+    users.query().with("posts:id,title").paginate(20, 1)
+
+    all.load("posts.author")        // on a collection already read
+    user.loadMissing("posts")       // only what is not loaded yet
+    ```
 
 Null keys are dropped, and long key lists are split to stay under the parameter limit of SQLite and
 PostgreSQL. An eager constraint runs once per key chunk plus once, so keep it free of side effects.
@@ -77,35 +125,63 @@ It may not set `limit` or `offset`. `cursor()` refuses eager loads; `lazy()` loa
 To catch N+1 queries in development, refuse lazy reads on models that came from a multi-row
 result. It is a process-wide setting; call it once at startup:
 
-```java
-ModelQuery.preventLazyLoading(true);
-users.query().get().get(0).relatedMany("posts");   // LazyLoadingViolationException
-```
+=== "Java"
+    ```java
+    ModelQuery.preventLazyLoading(true);
+    users.query().get().get(0).relatedMany("posts");   // LazyLoadingViolationException
+    ```
+=== "Kotlin"
+    ```kotlin
+    ModelQuery.preventLazyLoading(true)
+    users.query().get()[0].relatedMany<Post>("posts")   // LazyLoadingViolationException
+    ```
 
 ## has, whereHas and aggregates
 
-```java
-users.query().has("posts").get();
-users.query().has("posts", ">=", 3).get();
-users.query().whereHas("posts", q -> q.where("title", "like", "Java%")).get();
-users.query().doesntHave("posts.comments").get();
-users.query().whereRelation("posts", "published", true).get();
-```
+=== "Java"
+    ```java
+    users.query().has("posts").get();
+    users.query().has("posts", ">=", 3).get();
+    users.query().whereHas("posts", q -> q.where("title", "like", "Java%")).get();
+    users.query().doesntHave("posts.comments").get();
+    users.query().whereRelation("posts", "published", true).get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    users.query().has("posts").get()
+    users.query().has("posts", ">=", 3).get()
+    users.query().whereHas("posts") { q -> q.where("title", "like", "Java%") }.get()
+    users.query().doesntHave("posts.comments").get()
+    users.query().whereRelation("posts", "published", true).get()
+    ```
 
 These compile to `exists` subqueries. Count, sum or check related rows without loading them. Each
 call adds one subselect to the query, named `<relation>_<function>_<column>`, or by `as`:
 
-```java
-users.query()
+=== "Java"
+    ```java
+    users.query()
+            .withCount("posts")                                        // posts_count
+            .withCount(Map.of("posts as published", q -> q.where("published", true)))
+            .withSum("orders", "total")                                // orders_sum_total
+            .withExists("posts")                                       // posts_exists, a Boolean
+            .get();
+
+    all.loadCount("posts");              // the same aggregates on models already read
+    user.loadExists(Map.of("posts", q -> q.where("published", true)));
+    ```
+=== "Kotlin"
+    ```kotlin
+    users.query()
         .withCount("posts")                                        // posts_count
-        .withCount(Map.of("posts as published", q -> q.where("published", true)))
+        .withCount(mapOf("posts as published" to Consumer<EloquentBuilder<*>> { q -> q.where("published", true) }))
         .withSum("orders", "total")                                // orders_sum_total
         .withExists("posts")                                       // posts_exists, a Boolean
-        .get();
+        .get()
 
-all.loadCount("posts");              // the same aggregates on models already read
-user.loadExists(Map.of("posts", q -> q.where("published", true)));
-```
+    all.loadCount("posts")              // the same aggregates on models already read
+    user.loadExists(mapOf("posts" to Consumer<EloquentBuilder<*>> { q -> q.where("published", true) }))
+    ```
 
 `withMin`, `withMax`, `withAvg` and `withAggregate(relation, column, function)` work the same way.
 After `withCount`, call `addSelect`, not `select`: `select` replaces the columns and drops the
@@ -124,27 +200,46 @@ What a constraint closure may contain:
 
 ## Through, morph and one-of-many
 
-```java
-public HasManyThrough<Post> posts() {
-    return hasManyThrough(Post.class, User.class);   // posts of the users of this country
-}
+=== "Java"
+    ```java
+    public HasManyThrough<Post> posts() {
+        return hasManyThrough(Post.class, User.class);   // posts of the users of this country
+    }
 
-public MorphMany<Comment> comments() { return morphMany(Comment.class, "commentable"); }
-public MorphTo<Model> commentable()  { return morphTo("commentable"); }
-public HasOne<Order> latestOrder()   { return hasOne(Order.class).latestOfMany(); }
-```
+    public MorphMany<Comment> comments() { return morphMany(Comment.class, "commentable"); }
+    public MorphTo<Model> commentable()  { return morphTo("commentable"); }
+    public HasOne<Order> latestOrder()   { return hasOne(Order.class).latestOfMany(); }
+    ```
+=== "Kotlin"
+    ```kotlin
+    fun posts(): HasManyThrough<Post> {
+        return hasManyThrough(Post::class.java, User::class.java)   // posts of the users of this country
+    }
+
+    fun comments(): MorphMany<Comment> = morphMany(Comment::class.java, "commentable")
+    fun commentable(): MorphTo<Model> = morphTo("commentable")
+    fun latestOrder(): HasOne<Order> = hasOne(Order::class.java).latestOfMany()
+    ```
 
 A through relation creates its far row without linking it to the middle row; create the middle
 row yourself. Use the through relation's finders, pages and iterators like any other.
 
 A morph relation stores an alias in `commentable_type`. Register every parent once at startup:
 
-```java
-Map<String, Class<? extends Model>> map = new LinkedHashMap<>();
-map.put("post", Post.class);
-map.put("video", Video.class);
-MorphMap.morphMap(map);
-```
+=== "Java"
+    ```java
+    Map<String, Class<? extends Model>> map = new LinkedHashMap<>();
+    map.put("post", Post.class);
+    map.put("video", Video.class);
+    MorphMap.morphMap(map);
+    ```
+=== "Kotlin"
+    ```kotlin
+    val map = LinkedHashMap<String, Class<out Model>>()
+    map["post"] = Post::class.java
+    map["video"] = Video::class.java
+    MorphMap.morphMap(map)
+    ```
 
 Without an alias, Diwan throws `ClassMorphViolationException`, unless you opt out with
 `MorphMap.requireMorphMap(false)`. Filter on a `morphTo` with `whereHasMorph`, `hasMorph` and
@@ -160,35 +255,62 @@ row afterwards. Put the condition in the `ofMany` constraint to pick the latest 
 The foreign key is set for you. A parent with no key yet throws `IllegalStateException` before any
 SQL.
 
-```java
-Post post = user.posts().create(Map.of("title", "Hello"));   // user_id set
-user.posts().saveMany(List.of(draftA, draftB));             // no transaction
-post.author().associate(otherUser);                         // sets user_id and the relation
-post.author().dissociate();
-```
+=== "Java"
+    ```java
+    Post post = user.posts().create(Map.of("title", "Hello"));   // user_id set
+    user.posts().saveMany(List.of(draftA, draftB));             // no transaction
+    post.author().associate(otherUser);                         // sets user_id and the relation
+    post.author().dissociate();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val post = user.posts().create(mapOf("title" to "Hello"))   // user_id set
+    user.posts().saveMany(listOf(draftA, draftB))              // no transaction
+    post.author().associate(otherUser)                         // sets user_id and the relation
+    post.author().dissociate()
+    ```
 
 ## Pivot writes
 
 `belongsToMany` reads through a joining table, `role_user` by default with `user_id` and `role_id`.
 Each related row carries its joining row as `pivot`.
 
-```java
-public BelongsToMany<Role> roles() {
-    return belongsToMany(Role.class).withPivot("status").withTimestamps();
-}
+=== "Java"
+    ```java
+    public BelongsToMany<Role> roles() {
+        return belongsToMany(Role.class).withPivot("status").withTimestamps();
+    }
 
-user.roles().attach(5, Map.of("status", "active"));
-user.roles().detach(5);
-SyncResult changes = user.roles().sync(List.of(1, 2, 3));
-changes.getAttached();   // ids added
-changes.getDetached();   // ids removed
-user.roles().syncWithoutDetaching(List.of(4));
-user.roles().toggle(List.of(1, 9));
-user.roles().updateExistingPivot(1, Map.of("status", "paused"));
+    user.roles().attach(5, Map.of("status", "active"));
+    user.roles().detach(5);
+    SyncResult changes = user.roles().sync(List.of(1, 2, 3));
+    changes.getAttached();   // ids added
+    changes.getDetached();   // ids removed
+    user.roles().syncWithoutDetaching(List.of(4));
+    user.roles().toggle(List.of(1, 9));
+    user.roles().updateExistingPivot(1, Map.of("status", "paused"));
 
-Pivot.of(user.roles().first().orElseThrow()).getString("status");   // read the joining row
-user.roles().wherePivot("status", "active").get();
-```
+    Pivot.of(user.roles().first().orElseThrow()).getString("status");   // read the joining row
+    user.roles().wherePivot("status", "active").get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    fun roles(): BelongsToMany<Role> {
+        return belongsToMany(Role::class.java).withPivot("status").withTimestamps()
+    }
+
+    user.roles().attach(5, mapOf("status" to "active"))
+    user.roles().detach(5)
+    val changes: SyncResult = user.roles().sync(listOf(1, 2, 3))
+    changes.attached   // ids added
+    changes.detached   // ids removed
+    user.roles().syncWithoutDetaching(listOf(4))
+    user.roles().toggle(listOf(1, 9))
+    user.roles().updateExistingPivot(1, mapOf("status" to "paused"))
+
+    Pivot.of(user.roles().first().orElseThrow()).getString("status")   // read the joining row
+    user.roles().wherePivot("status", "active").get()
+    ```
 
 `ids` can be an id, a related model, a collection of either, or a map from id to pivot attributes.
 Index the joining table on a unique (`user_id`, `role_id`) and on `role_id`. A chain of `or` clauses
@@ -200,15 +322,25 @@ relation's type; a different type value in the attributes throws `IllegalArgumen
 
 Name relations in `touches()` to update a parent's `updated_at` when a child changes:
 
-```java
-public final class Comment extends Model {
-    @Override
-    protected Set<String> touches() { return Collections.singleton("post"); }
-}
+=== "Java"
+    ```java
+    public final class Comment extends Model {
+        @Override
+        protected Set<String> touches() { return Collections.singleton("post"); }
+    }
 
-comment.save();    // then: update posts set updated_at = ? where posts.id = ?
-Model.withoutTouching(Post.class, () -> importComments(rows));   // this thread only
-```
+    comment.save();    // then: update posts set updated_at = ? where posts.id = ?
+    Model.withoutTouching(Post.class, () -> importComments(rows));   // this thread only
+    ```
+=== "Kotlin"
+    ```kotlin
+    class Comment : Model() {
+        override fun touches(): Set<String> = Collections.singleton("post")
+    }
+
+    comment.save()    // then: update posts set updated_at = ? where posts.id = ?
+    Model.withoutTouching(Post::class.java) { importComments(rows) }   // this thread only
+    ```
 
 A save that changed something, and a delete, each run one raw `UPDATE` per touched owner, with no
 events and no `SELECT`. The owner object in memory keeps its old `updated_at`; call `refresh()` to

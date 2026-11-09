@@ -2,29 +2,57 @@
 
 الـ `Schema` تنشئ الجداول وتغيّرها. تصف الجدول داخل callback (دالة يستدعيها النظام) على `Blueprint` (مخطط الجدول)، ثم تحوله الـ grammar (قواعد توليد SQL الخاصة بكل قاعدة بيانات) الخاصة بقاعدة بياناتك إلى SQL.
 
-```java
-Schema schema = manager.schema();      // the default connection; manager.schema("cache") for another
-```
+=== "Java"
+
+    ```java
+    Schema schema = manager.schema();      // the default connection; manager.schema("cache") for another
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val schema = manager.schema()      // the default connection; manager.schema("cache") for another
+    ```
 
 المتغير `manager` هو الـ `DatabaseManager` من صفحة [الاتصالات والمعاملات](connections.md). تُبنى الـ `Schema` من إعداد الاتصال، فلا يذكر كودك أي صنف driver. بدون manager استعمل وحدة الـ grammar: `SQLiteSchema.of(connection)`، أو `PostgresSchema.of(connection)` مع PostgreSQL.
 
 ## الإنشاء والتعديل والحذف
 
-```java
-schema.create("users", table -> {
-    table.id();
-    table.string("email").unique();
-    table.booleanColumn("active").defaultValue(true);
-    table.enumColumn("role", List.of("admin", "member")).defaultValue("member");
-    table.rememberToken();
-    table.softDeletes();
-    table.timestamps();
-});
+=== "Java"
 
-schema.table("users", table -> table.text("bio").nullable());   // add a column
-schema.rename("users", "people");
-schema.dropIfExists("people");                                  // drop(...) fails if it is missing
-```
+    ```java
+    schema.create("users", table -> {
+        table.id();
+        table.string("email").unique();
+        table.booleanColumn("active").defaultValue(true);
+        table.enumColumn("role", List.of("admin", "member")).defaultValue("member");
+        table.rememberToken();
+        table.softDeletes();
+        table.timestamps();
+    });
+
+    schema.table("users", table -> table.text("bio").nullable());   // add a column
+    schema.rename("users", "people");
+    schema.dropIfExists("people");                                  // drop(...) fails if it is missing
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.create("users") { table ->
+        table.id()
+        table.string("email").unique()
+        table.booleanColumn("active").defaultValue(true)
+        table.enumColumn("role", listOf("admin", "member")).defaultValue("member")
+        table.rememberToken()
+        table.softDeletes()
+        table.timestamps()
+    }
+
+    schema.table("users") { table -> table.text("bio").nullable() }   // add a column
+    schema.rename("users", "people")
+    schema.dropIfExists("people")                                     // drop(...) fails if it is missing
+    ```
 
 الدالتان `create` و`table` تأخذان `Consumer<Blueprint>`. حين يحتاج استدعاء واحد إلى عدة جمل (جدول مع unique index)، تنفذها SQLite داخل transaction (معاملة) واحدة، فلا يبقى شيء ناقص عند الفشل. بادئة الجداول (table prefix) في الاتصال توضع قبل كل جدول وكل اسم index مولَّد.
 
@@ -47,12 +75,23 @@ schema.dropIfExists("people");                                  // drop(...) fai
 
 ## المعدّلات (Modifiers)
 
-```java
-table.string("slug", 120).nullable().unique();
-table.timestamp("seen_at").useCurrent();
-table.integer("qty").check("qty > 0");
-table.integer("total").storedAs("qty * price");
-```
+=== "Java"
+
+    ```java
+    table.string("slug", 120).nullable().unique();
+    table.timestamp("seen_at").useCurrent();
+    table.integer("qty").check("qty > 0");
+    table.integer("total").storedAs("qty * price");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.string("slug", 120).nullable().unique()
+    table.timestamp("seen_at").useCurrent()
+    table.integer("qty").check("qty > 0")
+    table.integer("total").storedAs("qty * price")
+    ```
 
 الشائعة منها `nullable` و`defaultValue` و`useCurrent` و`unique` و`index` و`primary` و`autoIncrement` و`unsigned` و`comment` و`virtualAs` و`storedAs`. SQLite تتجاهل `unsigned` و`comment`. وتضيف عمودًا `not null` بلا قيمة افتراضية فقط ما دام الجدول فارغًا. والـ enum على SQLite يرفض أي قيمة خارج قائمته، ويحافظ على هذه القاعدة عبر إعادات بناء الجدول اللاحقة.
 
@@ -60,11 +99,21 @@ table.integer("total").storedAs("qty * price");
 
 يمكن لعمود نصي أن يحدد الـ collation الذي تُقارن به قيمه وتُرتَّب. `Collation.BINARY` هو collation المقارنة بالبايتات، وهو قابل للنقل بين قواعد البيانات. تكتبه PostgreSQL على هيئة `"C"` وتكتبه SQLite على هيئة `BINARY`، فيعطي migration واحد الترتيب نفسه على الاثنتين.
 
-```java
-table.string("code").collation(Collation.BINARY);
-table.string("name").collation("nb_NO.utf8");    // the database's own name, written as given
-schema.table("codes", table -> table.string("code").collation(Collation.BINARY).change());
-```
+=== "Java"
+
+    ```java
+    table.string("code").collation(Collation.BINARY);
+    table.string("name").collation("nb_NO.utf8");    // the database's own name, written as given
+    schema.table("codes", table -> table.string("code").collation(Collation.BINARY).change());
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.string("code").collation(Collation.BINARY)
+    table.string("name").collation("nb_NO.utf8")    // the database's own name, written as given
+    schema.table("codes") { t -> t.string("code").collation(Collation.BINARY).change() }
+    ```
 
 الاسم المعطى نصًا يُكتب كما هو، فيجب أن يكون collation تعرفه قاعدة البيانات. ولا يجوز أن يحوي علامة اقتباس أو حرف تحكم. على SQLite تحتفظ إعادة بناء الجدول بالـ collation الخاص بالعمود. أما `COLLATE` داخل قيد جدول، مثل `unique (email collate nocase)`، فما زال مرفوضًا.
 
@@ -72,56 +121,115 @@ schema.table("codes", table -> table.string("code").collation(Collation.BINARY).
 
 `change()` تعيد تعريف العمود. كما في Laravel 11 وما بعدها، التعريف الجديد يحل محل القديم بالكامل، فأعد ذكر كل معدّل تريد الإبقاء عليه.
 
-```java
-schema.table("posts", table -> table.string("title", 500).nullable().change());
-```
+=== "Java"
+
+    ```java
+    schema.table("posts", table -> table.string("title", 500).nullable().change());
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.table("posts") { table -> table.string("title", 500).nullable().change() }
+    ```
 
 تغيير عمود auto-increment (ترقيم تلقائي) غير مدعوم. على SQLite، أعد تسمية أو احذف عمودًا تشير إليه جداول أخرى في استدعاء `schema.table` منفصل عن `change()`. العمود الذي ما زال index أو مفتاح يستخدمه لا يمكن حذفه، فاحذف الـ index أو المفتاح أولًا، وفي الاستدعاء نفسه إن شئت.
 
 ## الفهارس (Indexes)
 
-```java
-table.index("user_id", "title");                  // columns in order
-table.index(List.of("state", "next_fire_at"), "alarms_state_next");   // named index
-table.unique(List.of("slug", "tenant_id"), "posts_slug_tenant");
-table.primary("a", "b");
-table.dropIndex("posts_user_id_title_index");
-table.dropUnique(List.of("slug"));
-table.renameIndex("old_name", "new_name");
-```
+=== "Java"
+
+    ```java
+    table.index("user_id", "title");                  // columns in order
+    table.index(List.of("state", "next_fire_at"), "alarms_state_next");   // named index
+    table.unique(List.of("slug", "tenant_id"), "posts_slug_tenant");
+    table.primary("a", "b");
+    table.dropIndex("posts_user_id_title_index");
+    table.dropUnique(List.of("slug"));
+    table.renameIndex("old_name", "new_name");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index("user_id", "title")                  // columns in order
+    table.index(listOf("state", "next_fire_at"), "alarms_state_next")   // named index
+    table.unique(listOf("slug", "tenant_id"), "posts_slug_tenant")
+    table.primary("a", "b")
+    table.dropIndex("posts_user_id_title_index")
+    table.dropUnique(listOf("slug"))
+    table.renameIndex("old_name", "new_name")
+    ```
 
 ## المفاتيح الأجنبية (Foreign keys)
 
-```java
-table.foreignId("user_id").constrained().cascadeOnDelete();     // points at users.id
-table.foreignId("editor_id").nullable().constrained("users").nullOnDelete();
+=== "Java"
 
-table.foreign("order_id").references("id").on("orders").onDelete(ForeignKeyAction.CASCADE);
-table.dropForeign(List.of("order_id"));
-table.dropConstrainedForeignId("user_id");                       // key, index and column
-```
+    ```java
+    table.foreignId("user_id").constrained().cascadeOnDelete();     // points at users.id
+    table.foreignId("editor_id").nullable().constrained("users").nullOnDelete();
+
+    table.foreign("order_id").references("id").on("orders").onDelete(ForeignKeyAction.CASCADE);
+    table.dropForeign(List.of("order_id"));
+    table.dropConstrainedForeignId("user_id");                       // key, index and column
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.foreignId("user_id").constrained().cascadeOnDelete()     // points at users.id
+    table.foreignId("editor_id").nullable().constrained("users").nullOnDelete()
+
+    table.foreign("order_id").references("id").on("orders").onDelete(ForeignKeyAction.CASCADE)
+    table.dropForeign(listOf("order_id"))
+    table.dropConstrainedForeignId("user_id")                       // key, index and column
+    ```
 
 إجراءات الحذف والتحديث هي `cascade` و`restrict` و`set null` و`no action`، ولكل منها دالة تبدأ بـ `on...`.
 
 تحدد PostgreSQL طول الاسم بـ 63 بايتًا، وقد يتجاوز الاسم الافتراضي لمفتاح على جدول طويل الاسم هذا الحد. سمِّ المفتاح بنفسك بالوسيط الثالث لـ `constrained`، أو بالوسيط الثاني لـ `references`:
 
-```java
-table.foreignId("attribute_id").constrained("product_attribute_values", "id", "pav_attribute_fk");
-table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values");
-```
+=== "Java"
+
+    ```java
+    table.foreignId("attribute_id").constrained("product_attribute_values", "id", "pav_attribute_fk");
+    table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.foreignId("attribute_id").constrained("product_attribute_values", "id", "pav_attribute_fk")
+    table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values")
+    ```
 
 ## قيود check والأعمدة المولَّدة وSQL الخام
 
-```java
-schema.create("lines", table -> {
-    table.id();
-    table.integer("qty").check("qty > 0");
-    table.integer("price");
-    table.integer("total").storedAs("qty * price");
-    table.check("lines_price_check", "price >= 0");
-});
-schema.statement("create index lines_total on lines (total)");
-```
+=== "Java"
+
+    ```java
+    schema.create("lines", table -> {
+        table.id();
+        table.integer("qty").check("qty > 0");
+        table.integer("price");
+        table.integer("total").storedAs("qty * price");
+        table.check("lines_price_check", "price >= 0");
+    });
+    schema.statement("create index lines_total on lines (total)");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.create("lines") { table ->
+        table.id()
+        table.integer("qty").check("qty > 0")
+        table.integer("price")
+        table.integer("total").storedAs("qty * price")
+        table.check("lines_price_check", "price >= 0")
+    }
+    schema.statement("create index lines_total on lines (total)")
+    ```
 
 الـ SQL الذي تعطيه لـ `check` و`storedAs` و`virtualAs` و`rawColumn` و`statement` يدخل الجملة كما كُتب. ابنِه من ثوابت، لا من مدخلات المستخدم. أسماء الجداول والأعمدة حالة مختلفة: علامات الاقتباس داخل الاسم تُهرَّب، ولا يُرفض إلا الاسم الفارغ والاسم الذي فيه محارف تحكم. استخدم `schema.driverName()` (تعيد `"sqlite"` أو `"pgsql"`) حين يختلف الـ SQL الخام بين القواعد.
 
@@ -133,28 +241,57 @@ SQLite لا تستطيع إضافة primary key (مفتاح أساسي) أو for
 
 ## فحص ما هو موجود
 
-```java
-boolean hasUsers = schema.hasTable("users");
-boolean hasBio = schema.hasColumn("users", "bio");
+=== "Java"
 
-for (IndexInfo index : schema.indexes("posts")) {
-    System.out.println(index.name() + " " + index.columns() + " unique=" + index.isUnique());
-}
-for (ForeignKeyInfo key : schema.foreignKeys("posts")) {
-    System.out.println(key.columns() + " -> " + key.foreignTable() + key.foreignColumns());
-}
-```
+    ```java
+    boolean hasUsers = schema.hasTable("users");
+    boolean hasBio = schema.hasColumn("users", "bio");
+
+    for (IndexInfo index : schema.indexes("posts")) {
+        System.out.println(index.name() + " " + index.columns() + " unique=" + index.isUnique());
+    }
+    for (ForeignKeyInfo key : schema.foreignKeys("posts")) {
+        System.out.println(key.columns() + " -> " + key.foreignTable() + key.foreignColumns());
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val hasUsers = schema.hasTable("users")
+    val hasBio = schema.hasColumn("users", "bio")
+
+    for (index in schema.indexes("posts")) {
+        println("${index.name()} ${index.columns()} unique=${index.isUnique()}")
+    }
+    for (key in schema.foreignKeys("posts")) {
+        println("${key.columns()} -> ${key.foreignTable()}${key.foreignColumns()}")
+    }
+    ```
 
 ### سرد كل شيء وحذفه
 
-```java
-List<TableInfo> tables = schema.getTables();        // name and schema, ordered by schema, then name
-List<String> names = schema.getTableListing();      // names only
-List<ViewInfo> views = schema.getViews();
+=== "Java"
 
-schema.dropAllViews();
-schema.dropAllTables();
-```
+    ```java
+    List<TableInfo> tables = schema.getTables();        // name and schema, ordered by schema, then name
+    List<String> names = schema.getTableListing();      // names only
+    List<ViewInfo> views = schema.getViews();
+
+    schema.dropAllViews();
+    schema.dropAllTables();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val tables = schema.tables              // name and schema, ordered by schema, then name
+    val names = schema.tableListing         // names only
+    val views = schema.views
+
+    schema.dropAllViews()
+    schema.dropAllTables()
+    ```
 
 الصنفان `TableInfo` و`ViewInfo` قيمتان غير قابلتين للتعديل فيهما `name()` و`schema()`. الجداول الداخلية لا تُسرد: جداول `sqlite_` و`android_metadata` وجداول FTS المساعدة على SQLite وAndroid، و`spatial_ref_sys` على PostgreSQL. يعيد السرد أسماء الجداول الحقيقية بما فيها بادئة الجداول (table prefix) في الاتصال، كما في Laravel. وعلى SQLite الأقدم من 3.37 تُخفى أيضًا الجداول المساعدة لـ FTS3-5 وR-Tree.
 
@@ -165,9 +302,17 @@ schema.dropAllTables();
 
 ## معاينة الـ SQL
 
-```java
-List<LoggedQuery> plan = schema.pretend(s -> s.create("t", table -> table.id()));
-```
+=== "Java"
+
+    ```java
+    List<LoggedQuery> plan = schema.pretend(s -> s.create("t", table -> table.id()));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val plan = schema.pretend { s -> s.create("t") { table -> table.id() } }
+    ```
 
 `pretend` تسرد الجمل ولا تغير شيئًا. هي تقرأ الجداول الحية، فتعرض إعادة البناء بجملها الحقيقية، لكن الجدول الذي أُنشئ قبلها في نفس تشغيل pretend (وضع المعاينة دون تنفيذ) لا يكون موجودًا بالنسبة لها. و`hasTable` و`hasColumn` تعيدان `false` في وضع pretend.
 

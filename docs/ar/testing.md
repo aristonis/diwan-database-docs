@@ -6,22 +6,32 @@
 
 أضفها إلى نطاق الاختبار فقط.
 
-```kotlin
-dependencies {
-    testImplementation("org.aristonis:diwan-database-testing:0.3.0")
-}
-```
+=== "Gradle (Kotlin)"
 
-Maven:
+    ```kotlin
+    dependencies {
+        testImplementation("org.aristonis:diwan-database-testing:0.3.0")
+    }
+    ```
 
-```xml
-<dependency>
-  <groupId>org.aristonis</groupId>
-  <artifactId>diwan-database-testing</artifactId>
-  <version>0.3.0</version>
-  <scope>test</scope>
-</dependency>
-```
+=== "Gradle (Groovy)"
+
+    ```groovy
+    dependencies {
+        testImplementation 'org.aristonis:diwan-database-testing:0.3.0'
+    }
+    ```
+
+=== "Maven"
+
+    ```xml
+    <dependency>
+      <groupId>org.aristonis</groupId>
+      <artifactId>diwan-database-testing</artifactId>
+      <version>0.3.0</version>
+      <scope>test</scope>
+    </dependency>
+    ```
 
 تحتاج الوحدة إلى JUnit Jupiter بإصدار 5.10 أو أحدث في classpath الاختبار، ولا تجلبه معها. أضف `diwan-database-eloquent` فقط إن استعملت assertions الخاصة بالـ models.
 
@@ -31,34 +41,77 @@ Maven:
 
 SQLite:
 
-```java
-class UserTest {
-    static final Connection CONNECTION = Connection.open(Map.of(
-            "driver", "sqlite", "database", "build/test.db"));
+=== "Java"
 
-    @RegisterExtension
-    static RefreshDatabase db = RefreshDatabase.rollback(
-            () -> SQLiteQuery.of(CONNECTION), SQLiteSchema::of,
-            List.of(new CreateUsersTable()));
+    ```java
+    class UserTest {
+        static final Connection CONNECTION = Connection.builder()
+                .name("test")
+                .dataSource(new DriverManagerDataSource("jdbc:sqlite:build/test.db", null, null))
+                .build();
 
-    @Test
-    void savesAUser(DatabaseAssertions assertions, QueryFactory query) {
-        query.table("users").insert(Map.of("name", "ann"));
+        @RegisterExtension
+        static RefreshDatabase db = RefreshDatabase.rollback(
+                () -> SQLiteQuery.of(CONNECTION), SQLiteSchema::of,
+                List.of(new CreateUsersTable()));
 
-        assertions.assertHas("users", Map.of("name", "ann"));
-        assertions.assertCount("users", 1);
+        @Test
+        void savesAUser(DatabaseAssertions assertions, QueryFactory query) {
+            query.table("users").insert(Map.of("name", "ann"));
+
+            assertions.assertHas("users", Map.of("name", "ann"));
+            assertions.assertCount("users", 1);
+        }
     }
-}
-```
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    class UserTest {
+        @Test
+        fun savesAUser(assertions: DatabaseAssertions, query: QueryFactory) {
+            query.table("users").insert(mapOf("name" to "ann"))
+
+            assertions.assertHas("users", mapOf("name" to "ann"))
+            assertions.assertCount("users", 1)
+        }
+
+        companion object {
+            val CONNECTION: Connection = Connection.builder()
+                .name("test")
+                .dataSource(DriverManagerDataSource("jdbc:sqlite:build/test.db", null, null))
+                .build()
+
+            @JvmField
+            @RegisterExtension
+            val db: RefreshDatabase = RefreshDatabase.rollback(
+                { SQLiteQuery.of(CONNECTION) }, SQLiteSchema::of,
+                listOf(CreateUsersTable()))
+        }
+    }
+    ```
 
 PostgreSQL:
 
-```java
-@RegisterExtension
-static RefreshDatabase db = RefreshDatabase.rollback(
-        () -> PostgresQuery.of(CONNECTION), PostgresSchema::of,
-        List.of(new CreateUsersTable()));
-```
+=== "Java"
+
+    ```java
+    @RegisterExtension
+    static RefreshDatabase db = RefreshDatabase.rollback(
+            () -> PostgresQuery.of(CONNECTION), PostgresSchema::of,
+            List.of(new CreateUsersTable()));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    @JvmField
+    @RegisterExtension
+    val db: RefreshDatabase = RefreshDatabase.rollback(
+        { PostgresQuery.of(CONNECTION) }, PostgresSchema::of,
+        listOf(CreateUsersTable()))
+    ```
 
 يجب أن يعيد الـ supplier نسخة الاتصال نفسها في كل مرة، فهي التي تحدد قاعدة البيانات. للوضع الآخر استعمل `RefreshDatabase.truncate(...)` بالوسائط نفسها.
 

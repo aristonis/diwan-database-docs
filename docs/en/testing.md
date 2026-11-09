@@ -6,22 +6,32 @@ The `diwan-database-testing` module gives every JUnit 5 test an empty database w
 
 Add it to the test scope only.
 
-```kotlin
-dependencies {
-    testImplementation("org.aristonis:diwan-database-testing:0.3.0")
-}
-```
+=== "Gradle (Kotlin)"
 
-Maven:
+    ```kotlin
+    dependencies {
+        testImplementation("org.aristonis:diwan-database-testing:0.3.0")
+    }
+    ```
 
-```xml
-<dependency>
-  <groupId>org.aristonis</groupId>
-  <artifactId>diwan-database-testing</artifactId>
-  <version>0.3.0</version>
-  <scope>test</scope>
-</dependency>
-```
+=== "Gradle (Groovy)"
+
+    ```groovy
+    dependencies {
+        testImplementation 'org.aristonis:diwan-database-testing:0.3.0'
+    }
+    ```
+
+=== "Maven"
+
+    ```xml
+    <dependency>
+      <groupId>org.aristonis</groupId>
+      <artifactId>diwan-database-testing</artifactId>
+      <version>0.3.0</version>
+      <scope>test</scope>
+    </dependency>
+    ```
 
 The module needs JUnit Jupiter 5.10 or later on your test classpath and does not bring it. Add `diwan-database-eloquent` only if you use the model assertions.
 
@@ -31,34 +41,77 @@ The module needs JUnit Jupiter 5.10 or later on your test classpath and does not
 
 SQLite:
 
-```java
-class UserTest {
-    static final Connection CONNECTION = Connection.open(Map.of(
-            "driver", "sqlite", "database", "build/test.db"));
+=== "Java"
 
-    @RegisterExtension
-    static RefreshDatabase db = RefreshDatabase.rollback(
-            () -> SQLiteQuery.of(CONNECTION), SQLiteSchema::of,
-            List.of(new CreateUsersTable()));
+    ```java
+    class UserTest {
+        static final Connection CONNECTION = Connection.builder()
+                .name("test")
+                .dataSource(new DriverManagerDataSource("jdbc:sqlite:build/test.db", null, null))
+                .build();
 
-    @Test
-    void savesAUser(DatabaseAssertions assertions, QueryFactory query) {
-        query.table("users").insert(Map.of("name", "ann"));
+        @RegisterExtension
+        static RefreshDatabase db = RefreshDatabase.rollback(
+                () -> SQLiteQuery.of(CONNECTION), SQLiteSchema::of,
+                List.of(new CreateUsersTable()));
 
-        assertions.assertHas("users", Map.of("name", "ann"));
-        assertions.assertCount("users", 1);
+        @Test
+        void savesAUser(DatabaseAssertions assertions, QueryFactory query) {
+            query.table("users").insert(Map.of("name", "ann"));
+
+            assertions.assertHas("users", Map.of("name", "ann"));
+            assertions.assertCount("users", 1);
+        }
     }
-}
-```
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    class UserTest {
+        @Test
+        fun savesAUser(assertions: DatabaseAssertions, query: QueryFactory) {
+            query.table("users").insert(mapOf("name" to "ann"))
+
+            assertions.assertHas("users", mapOf("name" to "ann"))
+            assertions.assertCount("users", 1)
+        }
+
+        companion object {
+            val CONNECTION: Connection = Connection.builder()
+                .name("test")
+                .dataSource(DriverManagerDataSource("jdbc:sqlite:build/test.db", null, null))
+                .build()
+
+            @JvmField
+            @RegisterExtension
+            val db: RefreshDatabase = RefreshDatabase.rollback(
+                { SQLiteQuery.of(CONNECTION) }, SQLiteSchema::of,
+                listOf(CreateUsersTable()))
+        }
+    }
+    ```
 
 PostgreSQL:
 
-```java
-@RegisterExtension
-static RefreshDatabase db = RefreshDatabase.rollback(
-        () -> PostgresQuery.of(CONNECTION), PostgresSchema::of,
-        List.of(new CreateUsersTable()));
-```
+=== "Java"
+
+    ```java
+    @RegisterExtension
+    static RefreshDatabase db = RefreshDatabase.rollback(
+            () -> PostgresQuery.of(CONNECTION), PostgresSchema::of,
+            List.of(new CreateUsersTable()));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    @JvmField
+    @RegisterExtension
+    val db: RefreshDatabase = RefreshDatabase.rollback(
+        { PostgresQuery.of(CONNECTION) }, PostgresSchema::of,
+        listOf(CreateUsersTable()))
+    ```
 
 The supplier must return the same connection instance every time. That instance identifies the database. Use `RefreshDatabase.truncate(...)` with the same arguments for the other mode.
 

@@ -3,42 +3,99 @@
 تعمل Diwan على Android 9 (API 28) وما بعده عبر `diwan-database-android`. هو driver (مشغّل) فوق `SQLiteDatabase` الخاصة بـ Android،
 فيعمل schema builder (باني المخطط) والـ migrations وquery builder (باني الاستعلامات) والنماذج كما على سطح المكتب. الوحدة JAR عادي بلا اعتماد وقت تشغيل.
 
-```kotlin
-implementation("org.aristonis:diwan-database:0.3.0")
-implementation("org.aristonis:diwan-database-android:0.3.0")
-implementation("org.aristonis:diwan-database-sqlite:0.3.0")
-implementation("org.aristonis:diwan-database-eloquent:0.3.0")   // only if you use models
-```
+=== "Gradle (Kotlin)"
+    ```kotlin
+    implementation("org.aristonis:diwan-database:0.3.0")
+    implementation("org.aristonis:diwan-database-android:0.3.0")
+    implementation("org.aristonis:diwan-database-sqlite:0.3.0")
+    implementation("org.aristonis:diwan-database-eloquent:0.3.0")   // only if you use models
+    ```
+=== "Gradle (Groovy)"
+    ```groovy
+    implementation 'org.aristonis:diwan-database:0.3.0'
+    implementation 'org.aristonis:diwan-database-android:0.3.0'
+    implementation 'org.aristonis:diwan-database-sqlite:0.3.0'
+    implementation 'org.aristonis:diwan-database-eloquent:0.3.0'   // only if you use models
+    ```
+=== "Maven"
+    ```xml
+    <dependency>
+        <groupId>org.aristonis</groupId>
+        <artifactId>diwan-database</artifactId>
+        <version>0.3.0</version>
+    </dependency>
+    <dependency>
+        <groupId>org.aristonis</groupId>
+        <artifactId>diwan-database-android</artifactId>
+        <version>0.3.0</version>
+    </dependency>
+    <dependency>
+        <groupId>org.aristonis</groupId>
+        <artifactId>diwan-database-sqlite</artifactId>
+        <version>0.3.0</version>
+    </dependency>
+    <dependency>
+        <groupId>org.aristonis</groupId>
+        <artifactId>diwan-database-eloquent</artifactId>
+        <version>0.3.0</version>
+    </dependency>
+    <!-- only if you use models -->
+    ```
 
 ## إعداد الـ driver
 
 مرّر `SQLiteOpenHelper` ودع الـ driver يفتح قاعدة البيانات عند أول استعمال، أو مرّر `SQLiteDatabase` مفتوحة:
 
-```java
-public final class AppDb extends SQLiteOpenHelper {
-    AppDb(Context context) { super(context, "app.db", null, 1); }
+=== "Java"
+    ```java
+    public final class AppDb extends SQLiteOpenHelper {
+        AppDb(Context context) { super(context, "app.db", null, 1); }
 
-    @Override public void onConfigure(SQLiteDatabase db) {
-        db.setForeignKeyConstraintsEnabled(true);   // Android leaves foreign keys off
-        db.enableWriteAheadLogging();
+        @Override public void onConfigure(SQLiteDatabase db) {
+            db.setForeignKeyConstraintsEnabled(true);   // Android leaves foreign keys off
+            db.enableWriteAheadLogging();
+        }
+        @Override public void onCreate(SQLiteDatabase db) { }
+        @Override public void onUpgrade(SQLiteDatabase db, int from, int to) { }
     }
-    @Override public void onCreate(SQLiteDatabase db) { }
-    @Override public void onUpgrade(SQLiteDatabase db, int from, int to) { }
-}
 
-DatabaseConfig config = DatabaseConfig.builder()
+    DatabaseConfig config = DatabaseConfig.builder()
+            .defaultConnection("app")
+            .connection(ConnectionConfig.builder("app").driver("android").build())
+            .build();
+
+    DatabaseManager manager = DatabaseManager.builder()
+            .config(config)
+            .connector(AndroidConnector.of(() -> new AppDb(context), SQLiteQuery::of, SQLiteSchema::of))
+            .build();
+
+    manager.migrator("app").migrations(migrations).build().run();
+    QueryFactory db = manager.query();
+    ```
+=== "Kotlin"
+    ```kotlin
+    class AppDb(context: Context) : SQLiteOpenHelper(context, "app.db", null, 1) {
+        override fun onConfigure(db: SQLiteDatabase) {
+            db.setForeignKeyConstraintsEnabled(true)   // Android leaves foreign keys off
+            db.enableWriteAheadLogging()
+        }
+        override fun onCreate(db: SQLiteDatabase) { }
+        override fun onUpgrade(db: SQLiteDatabase, from: Int, to: Int) { }
+    }
+
+    val config = DatabaseConfig.builder()
         .defaultConnection("app")
         .connection(ConnectionConfig.builder("app").driver("android").build())
-        .build();
+        .build()
 
-DatabaseManager manager = DatabaseManager.builder()
+    val manager = DatabaseManager.builder()
         .config(config)
-        .connector(AndroidConnector.of(() -> new AppDb(context), SQLiteQuery::of, SQLiteSchema::of))
-        .build();
+        .connector(AndroidConnector.of({ AppDb(context) }, SQLiteQuery::of, SQLiteSchema::of))
+        .build()
 
-manager.migrator("app").migrations(migrations).build().run();
-QueryFactory db = manager.query();
-```
+    manager.migrator("app").migrations(migrations).build().run()
+    val db = manager.query()
+    ```
 
 تفتح `of(SQLiteOpenHelper)` قاعدة البيانات عند أول استدعاء يحتاجها، وهذا الاستدعاء يشغّل `onCreate` أو `onUpgrade` في الـ helper.
 اجعل الاستدعاء الأول خارج الـ main thread (خيط تنفيذ). لا يغلق الـ driver قاعدة البيانات أبدًا؛ تطبيقك يملكها.
@@ -46,6 +103,8 @@ QueryFactory db = manager.query();
 تأخذ `AndroidConnector.of(...)` الـ factories الخاصة بالـ grammar مرة واحدة هنا. بعد ذلك يطلب كودك من الـ manager الدوال `query()` و`schema()` و`migrator(name)` ولا يذكر أي صنف grammar. ابنِ أول اتصال خارج الـ main thread.
 
 بدون manager ابنِ `Connection` بـ `Connection.builder().name("app").driver(AndroidSqliteDriver.of(new AppDb(context))).build()` واستعمل `SQLiteSchema.of(connection)` و`SQLiteQuery.of(connection)`.
+
+كل المفاتيح: [Configuration](configuration.md)
 
 ## الـ threads
 
@@ -87,16 +146,28 @@ QueryFactory db = manager.query();
 
 ## سجل الاستعلامات للتصحيح
 
-```java
-Connection connection = Connection.builder()
-        .name("app").driver(androidDriver).queryLogLimit(200).build();
-if (BuildConfig.DEBUG) {
-    connection.events().enableQueryLog();
-}
-for (LoggedQuery entry : connection.events().getQueryLog()) {
-    Log.d("diwan", entry.sql() + " " + entry.bindings());
-}
-```
+=== "Java"
+    ```java
+    Connection connection = Connection.builder()
+            .name("app").driver(androidDriver).queryLogLimit(200).build();
+    if (BuildConfig.DEBUG) {
+        connection.events().enableQueryLog();
+    }
+    for (LoggedQuery entry : connection.events().getQueryLog()) {
+        Log.d("diwan", entry.sql() + " " + entry.bindings());
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    val connection = Connection.builder()
+        .name("app").driver(androidDriver).queryLogLimit(200).build()
+    if (BuildConfig.DEBUG) {
+        connection.events().enableQueryLog()
+    }
+    for (entry in connection.events().queryLog) {
+        Log.d("diwan", "${entry.sql()} ${entry.bindings()}")
+    }
+    ```
 
 ## R8 وProGuard
 
