@@ -6,39 +6,39 @@ on the desktop. The module is a plain JAR with no runtime dependency.
 
 === "Gradle (Kotlin)"
     ```kotlin
-    implementation("org.aristonis:diwan-database:0.3.0")
-    implementation("org.aristonis:diwan-database-android:0.3.0")
-    implementation("org.aristonis:diwan-database-sqlite:0.3.0")
-    implementation("org.aristonis:diwan-database-eloquent:0.3.0")   // only if you use models
+    implementation("org.aristonis:diwan-database:0.3.1")
+    implementation("org.aristonis:diwan-database-android:0.3.1")
+    implementation("org.aristonis:diwan-database-sqlite:0.3.1")
+    implementation("org.aristonis:diwan-database-eloquent:0.3.1")   // only if you use models
     ```
 === "Gradle (Groovy)"
     ```groovy
-    implementation 'org.aristonis:diwan-database:0.3.0'
-    implementation 'org.aristonis:diwan-database-android:0.3.0'
-    implementation 'org.aristonis:diwan-database-sqlite:0.3.0'
-    implementation 'org.aristonis:diwan-database-eloquent:0.3.0'   // only if you use models
+    implementation 'org.aristonis:diwan-database:0.3.1'
+    implementation 'org.aristonis:diwan-database-android:0.3.1'
+    implementation 'org.aristonis:diwan-database-sqlite:0.3.1'
+    implementation 'org.aristonis:diwan-database-eloquent:0.3.1'   // only if you use models
     ```
 === "Maven"
     ```xml
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.1</version>
     </dependency>
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-android</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.1</version>
     </dependency>
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-sqlite</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.1</version>
     </dependency>
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-eloquent</artifactId>
-        <version>0.3.0</version>
+        <version>0.3.1</version>
     </dependency>
     <!-- only if you use models -->
     ```

@@ -1,13 +1,12 @@
 # مرجع الـ API
 
-Javadoc (توثيق الواجهة المولَّد من تعليقات Java) لكل صنف عام في كل الوحدات موقع واحد، فيه بحث عبر كل الوحدات ومبدِّل للإصدارات:
+Javadoc (توثيق الواجهة المولَّد من تعليقات Java) لكل وحدة، الإصدار 0.3.1، على javadoc.io:
 
-- [أحدث إصدار](../../api/) · [0.3 (أحدث 0.3.x)](../../api/0.3/) · [0.3.0](../../api/0.3.0/)
-- [نسخة التطوير](../../api/dev/)، تُبنى من جديد في نهاية كل sprint
+[`diwan-database`](https://javadoc.io/doc/org.aristonis/diwan-database/0.3.1) · [`diwan-database-sqlite`](https://javadoc.io/doc/org.aristonis/diwan-database-sqlite/0.3.1) · [`diwan-database-pgsql`](https://javadoc.io/doc/org.aristonis/diwan-database-pgsql/0.3.1) · [`diwan-database-android`](https://javadoc.io/doc/org.aristonis/diwan-database-android/0.3.1) · [`diwan-database-testing`](https://javadoc.io/doc/org.aristonis/diwan-database-testing/0.3.1) · [`diwan-database-eloquent`](https://javadoc.io/doc/org.aristonis/diwan-database-eloquent/0.3.1)
 
-ولكل وحدة أيضًا Javadoc خاص بها على javadoc.io كمرآة: `https://javadoc.io/doc/org.aristonis/diwan-database/0.3.0`. ويمكنك بناء الموقع الموحّد من المستودع بالأمر `./gradlew apiDocs`.
+ويمكنك أيضًا بناء موقع موحّد لكل الوحدات، فيه بحث عبرها، من المستودع بالأمر `./gradlew apiDocs`.
 
-كل الوحدات (modules) تستعمل المجموعة `org.aristonis` والإصدار `0.3.0`. والحزم تحت `org.aristonis.diwan.database`.
+كل الوحدات (modules) تستعمل المجموعة `org.aristonis` والإصدار `0.3.1`. والحزم تحت `org.aristonis.diwan.database`.
 
 | الوحدة (artifact) | أضفها حين | أهم الأصناف |
 |---|---|---|

@@ -1,16 +1,13 @@
 # API reference
 
-The Javadoc for every public class of every module is one site, with search across all
-modules and a version switch:
+The Javadoc of each module, version 0.3.1, on javadoc.io:
 
-- [Newest release](../api/) · [0.3 (newest 0.3.x)](../api/0.3/) · [0.3.0](../api/0.3.0/)
-- [Development build](../api/dev/), rebuilt at the end of each sprint
+[`diwan-database`](https://javadoc.io/doc/org.aristonis/diwan-database/0.3.1) · [`diwan-database-sqlite`](https://javadoc.io/doc/org.aristonis/diwan-database-sqlite/0.3.1) · [`diwan-database-pgsql`](https://javadoc.io/doc/org.aristonis/diwan-database-pgsql/0.3.1) · [`diwan-database-android`](https://javadoc.io/doc/org.aristonis/diwan-database-android/0.3.1) · [`diwan-database-testing`](https://javadoc.io/doc/org.aristonis/diwan-database-testing/0.3.1) · [`diwan-database-eloquent`](https://javadoc.io/doc/org.aristonis/diwan-database-eloquent/0.3.1)
 
-Each module also keeps its own Javadoc on javadoc.io, as a mirror:
-`https://javadoc.io/doc/org.aristonis/diwan-database/0.3.0`. You can build the combined site
-from the repository with `./gradlew apiDocs`.
+You can also build one combined site for every module, with search across them, from the
+repository with `./gradlew apiDocs`.
 
-All modules use the group `org.aristonis` and the version `0.3.0`. The packages sit under
+All modules use the group `org.aristonis` and the version `0.3.1`. The packages sit under
 `org.aristonis.diwan.database`.
 
 | Module (artifact) | Add it when | Main entry classes |
