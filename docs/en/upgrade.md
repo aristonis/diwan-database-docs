@@ -3,6 +3,15 @@
 This page lists the changes between releases, with the steps to take.
 Start from [Getting started](getting-started.md).
 
+## 0.2.0 to 0.3.0
+
+No code change is needed: 0.3.0 only adds API. One behaviour changed, in a way a test may notice:
+
+- Every driver and query error message now ends with the Diwan error, for example
+  `[DWN-CST-0001 unique violation: users_email_unique (email)]`. Nothing is replaced: the original
+  text, `sqlState()`, `vendorCode()`, `kinds()` and `databaseMessage()` are unchanged. A test that
+  compares the whole message fails; match the start, or read `error().code()` instead.
+
 ## 0.1.0 to 0.2.0
 
 No code change is needed: 0.2.0 only adds API. Four behaviours changed, in ways a test may notice:
