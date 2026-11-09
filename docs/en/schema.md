@@ -3,29 +3,57 @@
 `Schema` creates and changes tables. You describe the table in a callback on a `Blueprint`, and the
 grammar of your database turns it into SQL.
 
-```java
-Schema schema = manager.schema();      // the default connection; manager.schema("cache") for another
-```
+=== "Java"
+
+    ```java
+    Schema schema = manager.schema();      // the default connection; manager.schema("cache") for another
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val schema = manager.schema()      // the default connection; manager.schema("cache") for another
+    ```
 
 `manager` is the `DatabaseManager` from [Connections and transactions](connections.md). The schema is built from the connection's configuration, so your code never names a driver class. Without a manager, use the grammar module: `SQLiteSchema.of(connection)`, or `PostgresSchema.of(connection)` on PostgreSQL.
 
 ## Create, alter and drop
 
-```java
-schema.create("users", table -> {
-    table.id();
-    table.string("email").unique();
-    table.booleanColumn("active").defaultValue(true);
-    table.enumColumn("role", List.of("admin", "member")).defaultValue("member");
-    table.rememberToken();
-    table.softDeletes();
-    table.timestamps();
-});
+=== "Java"
 
-schema.table("users", table -> table.text("bio").nullable());   // add a column
-schema.rename("users", "people");
-schema.dropIfExists("people");                                  // drop(...) fails if it is missing
-```
+    ```java
+    schema.create("users", table -> {
+        table.id();
+        table.string("email").unique();
+        table.booleanColumn("active").defaultValue(true);
+        table.enumColumn("role", List.of("admin", "member")).defaultValue("member");
+        table.rememberToken();
+        table.softDeletes();
+        table.timestamps();
+    });
+
+    schema.table("users", table -> table.text("bio").nullable());   // add a column
+    schema.rename("users", "people");
+    schema.dropIfExists("people");                                  // drop(...) fails if it is missing
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.create("users") { table ->
+        table.id()
+        table.string("email").unique()
+        table.booleanColumn("active").defaultValue(true)
+        table.enumColumn("role", listOf("admin", "member")).defaultValue("member")
+        table.rememberToken()
+        table.softDeletes()
+        table.timestamps()
+    }
+
+    schema.table("users") { table -> table.text("bio").nullable() }   // add a column
+    schema.rename("users", "people")
+    schema.dropIfExists("people")                                     // drop(...) fails if it is missing
+    ```
 
 `create` and `table` take a `Consumer<Blueprint>`. When one call needs several statements (a table
 and its unique index), SQLite runs them in one transaction, so a failure leaves nothing behind. The
@@ -54,12 +82,23 @@ On a model, write an `instant` column through `Casts.instant()`. For timestamp c
 
 ## Modifiers
 
-```java
-table.string("slug", 120).nullable().unique();
-table.timestamp("seen_at").useCurrent();
-table.integer("qty").check("qty > 0");
-table.integer("total").storedAs("qty * price");
-```
+=== "Java"
+
+    ```java
+    table.string("slug", 120).nullable().unique();
+    table.timestamp("seen_at").useCurrent();
+    table.integer("qty").check("qty > 0");
+    table.integer("total").storedAs("qty * price");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.string("slug", 120).nullable().unique()
+    table.timestamp("seen_at").useCurrent()
+    table.integer("qty").check("qty > 0")
+    table.integer("total").storedAs("qty * price")
+    ```
 
 The common ones are `nullable`, `defaultValue`, `useCurrent`, `unique`, `index`, `primary`,
 `autoIncrement`, `unsigned`, `comment`, `virtualAs` and `storedAs`. SQLite ignores `unsigned` and
@@ -72,11 +111,21 @@ A text column can say how its values compare and sort. `Collation.BINARY` is the
 order. PostgreSQL writes it as `"C"` and SQLite as `BINARY`, so one migration gives the same order
 on both.
 
-```java
-table.string("code").collation(Collation.BINARY);
-table.string("name").collation("nb_NO.utf8");    // the database's own name, written as given
-schema.table("codes", table -> table.string("code").collation(Collation.BINARY).change());
-```
+=== "Java"
+
+    ```java
+    table.string("code").collation(Collation.BINARY);
+    table.string("name").collation("nb_NO.utf8");    // the database's own name, written as given
+    schema.table("codes", table -> table.string("code").collation(Collation.BINARY).change());
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.string("code").collation(Collation.BINARY)
+    table.string("name").collation("nb_NO.utf8")    // the database's own name, written as given
+    schema.table("codes") { t -> t.string("code").collation(Collation.BINARY).change() }
+    ```
 
 A name given as text is written as is, so it must be a collation the database knows. It cannot hold
 a quote or a control character. On SQLite a table rebuild keeps a column's collation. A `COLLATE`
@@ -87,9 +136,17 @@ inside a table constraint, such as `unique (email collate nocase)`, is still ref
 `change()` redefines a column. As in Laravel 11 and later, the new definition replaces the old one
 in full, so restate every modifier you want to keep.
 
-```java
-schema.table("posts", table -> table.string("title", 500).nullable().change());
-```
+=== "Java"
+
+    ```java
+    schema.table("posts", table -> table.string("title", 500).nullable().change());
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.table("posts") { table -> table.string("title", 500).nullable().change() }
+    ```
 
 Changing an auto-increment column is not supported. On SQLite, rename or drop a column that another
 table references in a separate `schema.table` call from a `change()`. A column that an index or key
@@ -97,26 +154,53 @@ still uses cannot be dropped, so drop the index or key first, in the same call i
 
 ## Indexes
 
-```java
-table.index("user_id", "title");                  // columns in order
-table.index(List.of("state", "next_fire_at"), "alarms_state_next");   // named index
-table.unique(List.of("slug", "tenant_id"), "posts_slug_tenant");
-table.primary("a", "b");
-table.dropIndex("posts_user_id_title_index");
-table.dropUnique(List.of("slug"));
-table.renameIndex("old_name", "new_name");
-```
+=== "Java"
+
+    ```java
+    table.index("user_id", "title");                  // columns in order
+    table.index(List.of("state", "next_fire_at"), "alarms_state_next");   // named index
+    table.unique(List.of("slug", "tenant_id"), "posts_slug_tenant");
+    table.primary("a", "b");
+    table.dropIndex("posts_user_id_title_index");
+    table.dropUnique(List.of("slug"));
+    table.renameIndex("old_name", "new_name");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index("user_id", "title")                  // columns in order
+    table.index(listOf("state", "next_fire_at"), "alarms_state_next")   // named index
+    table.unique(listOf("slug", "tenant_id"), "posts_slug_tenant")
+    table.primary("a", "b")
+    table.dropIndex("posts_user_id_title_index")
+    table.dropUnique(listOf("slug"))
+    table.renameIndex("old_name", "new_name")
+    ```
 
 ## Foreign keys
 
-```java
-table.foreignId("user_id").constrained().cascadeOnDelete();     // points at users.id
-table.foreignId("editor_id").nullable().constrained("users").nullOnDelete();
+=== "Java"
 
-table.foreign("order_id").references("id").on("orders").onDelete(ForeignKeyAction.CASCADE);
-table.dropForeign(List.of("order_id"));
-table.dropConstrainedForeignId("user_id");                       // key, index and column
-```
+    ```java
+    table.foreignId("user_id").constrained().cascadeOnDelete();     // points at users.id
+    table.foreignId("editor_id").nullable().constrained("users").nullOnDelete();
+
+    table.foreign("order_id").references("id").on("orders").onDelete(ForeignKeyAction.CASCADE);
+    table.dropForeign(List.of("order_id"));
+    table.dropConstrainedForeignId("user_id");                       // key, index and column
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.foreignId("user_id").constrained().cascadeOnDelete()     // points at users.id
+    table.foreignId("editor_id").nullable().constrained("users").nullOnDelete()
+
+    table.foreign("order_id").references("id").on("orders").onDelete(ForeignKeyAction.CASCADE)
+    table.dropForeign(listOf("order_id"))
+    table.dropConstrainedForeignId("user_id")                       // key, index and column
+    ```
 
 The delete and update actions are `cascade`, `restrict`, `set null` and `no action`, each with an
 `on...` method.
@@ -125,23 +209,47 @@ PostgreSQL limits a name to 63 bytes, and the default name of a key on a long ta
 Name the key yourself with the third argument of `constrained`, or with the second argument of
 `references`:
 
-```java
-table.foreignId("attribute_id").constrained("product_attribute_values", "id", "pav_attribute_fk");
-table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values");
-```
+=== "Java"
+
+    ```java
+    table.foreignId("attribute_id").constrained("product_attribute_values", "id", "pav_attribute_fk");
+    table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.foreignId("attribute_id").constrained("product_attribute_values", "id", "pav_attribute_fk")
+    table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values")
+    ```
 
 ## Check constraints, generated columns and raw SQL
 
-```java
-schema.create("lines", table -> {
-    table.id();
-    table.integer("qty").check("qty > 0");
-    table.integer("price");
-    table.integer("total").storedAs("qty * price");
-    table.check("lines_price_check", "price >= 0");
-});
-schema.statement("create index lines_total on lines (total)");
-```
+=== "Java"
+
+    ```java
+    schema.create("lines", table -> {
+        table.id();
+        table.integer("qty").check("qty > 0");
+        table.integer("price");
+        table.integer("total").storedAs("qty * price");
+        table.check("lines_price_check", "price >= 0");
+    });
+    schema.statement("create index lines_total on lines (total)");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.create("lines") { table ->
+        table.id()
+        table.integer("qty").check("qty > 0")
+        table.integer("price")
+        table.integer("total").storedAs("qty * price")
+        table.check("lines_price_check", "price >= 0")
+    }
+    schema.statement("create index lines_total on lines (total)")
+    ```
 
 The SQL you give to `check`, `storedAs`, `virtualAs`, `rawColumn` and `statement` goes into the
 statement as written. Build it from constants, never from user input. Table and column names are
@@ -160,28 +268,57 @@ Inside a transaction you opened yourself, a table that other tables point at is 
 
 ## Inspect what exists
 
-```java
-boolean hasUsers = schema.hasTable("users");
-boolean hasBio = schema.hasColumn("users", "bio");
+=== "Java"
 
-for (IndexInfo index : schema.indexes("posts")) {
-    System.out.println(index.name() + " " + index.columns() + " unique=" + index.isUnique());
-}
-for (ForeignKeyInfo key : schema.foreignKeys("posts")) {
-    System.out.println(key.columns() + " -> " + key.foreignTable() + key.foreignColumns());
-}
-```
+    ```java
+    boolean hasUsers = schema.hasTable("users");
+    boolean hasBio = schema.hasColumn("users", "bio");
+
+    for (IndexInfo index : schema.indexes("posts")) {
+        System.out.println(index.name() + " " + index.columns() + " unique=" + index.isUnique());
+    }
+    for (ForeignKeyInfo key : schema.foreignKeys("posts")) {
+        System.out.println(key.columns() + " -> " + key.foreignTable() + key.foreignColumns());
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val hasUsers = schema.hasTable("users")
+    val hasBio = schema.hasColumn("users", "bio")
+
+    for (index in schema.indexes("posts")) {
+        println("${index.name()} ${index.columns()} unique=${index.isUnique()}")
+    }
+    for (key in schema.foreignKeys("posts")) {
+        println("${key.columns()} -> ${key.foreignTable()}${key.foreignColumns()}")
+    }
+    ```
 
 ### List and drop everything
 
-```java
-List<TableInfo> tables = schema.getTables();        // name and schema, ordered by schema, then name
-List<String> names = schema.getTableListing();      // names only
-List<ViewInfo> views = schema.getViews();
+=== "Java"
 
-schema.dropAllViews();
-schema.dropAllTables();
-```
+    ```java
+    List<TableInfo> tables = schema.getTables();        // name and schema, ordered by schema, then name
+    List<String> names = schema.getTableListing();      // names only
+    List<ViewInfo> views = schema.getViews();
+
+    schema.dropAllViews();
+    schema.dropAllTables();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val tables = schema.tables              // name and schema, ordered by schema, then name
+    val names = schema.tableListing         // names only
+    val views = schema.views
+
+    schema.dropAllViews()
+    schema.dropAllTables()
+    ```
 
 `TableInfo` and `ViewInfo` are immutable values with `name()` and `schema()`. Internal tables are not listed: `sqlite_` tables, `android_metadata` and FTS shadow tables on SQLite and Android, and `spatial_ref_sys` on PostgreSQL. The listing returns real table names, including the connection's table prefix, as Laravel does. On SQLite older than 3.37, FTS3-5 and R-Tree shadow tables are hidden too.
 
@@ -192,9 +329,17 @@ schema.dropAllTables();
 
 ## Preview the SQL
 
-```java
-List<LoggedQuery> plan = schema.pretend(s -> s.create("t", table -> table.id()));
-```
+=== "Java"
+
+    ```java
+    List<LoggedQuery> plan = schema.pretend(s -> s.create("t", table -> table.id()));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val plan = schema.pretend { s -> s.create("t") { table -> table.id() } }
+    ```
 
 `pretend` lists the statements and changes nothing. It reads the live tables, so a rebuild shows its
 real statements, but a table made earlier in the same pretend run does not exist for it.

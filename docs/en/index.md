@@ -8,11 +8,18 @@ You write SQL, query builder calls, migrations and models. The library sends the
 
 Your code asks a `DatabaseManager` for what it needs. The driver is a configuration value, so moving from SQLite to PostgreSQL changes configuration, not code.
 
-```java
-QueryFactory db = manager.query();      // from the connection's configuration, no driver class in your code
-db.table("users").insert(Map.of("email", "ada@example.com"));
-List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).get();
-```
+=== "Java"
+    ```java
+    QueryFactory db = manager.query();      // from the connection's configuration, no driver class in your code
+    db.table("users").insert(Map.of("email", "ada@example.com"));
+    List<Map<String, Object>> rows = db.table("users").orderByDesc("id").limit(10).get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val db = manager.query()      // from the connection's configuration, no driver class in your code
+    db.table("users").insert(mapOf("email" to "ada@example.com"))
+    val rows = db.table("users").orderByDesc("id").limit(10).get()
+    ```
 
 [Getting started](getting-started.md) builds the manager.
 
@@ -51,6 +58,6 @@ Report a vulnerability privately, through [GitHub private vulnerability reportin
 | Run on a phone | [Android](android.md) |
 | Know where Diwan differs from Laravel | [Differences from Laravel](differences.md) |
 | Catch and understand failures | [Errors](errors.md) |
-| Look up a class or method | [API reference](api.md) |
+| Look up a class or method | [API reference](api-reference.md) |
 | Move between versions | [Upgrade](upgrade.md) |
 | Decode a term | [Glossary](glossary.md) |

@@ -4,30 +4,54 @@
 
 ## كتابة migration
 
-```java
-import org.aristonis.diwan.database.migrations.Migration;
-import org.aristonis.diwan.database.schema.Schema;
+=== "Java"
 
-final class CreateUsersTable extends Migration {
-    @Override
-    public String name() {
-        return "2026_10_31_000000_create_users_table";
-    }
+    ```java
+    import org.aristonis.diwan.database.migrations.Migration;
+    import org.aristonis.diwan.database.schema.Schema;
 
-    @Override
-    public void up(Schema schema) {
-        schema.create("users", table -> {
-            table.id();
-            table.string("email").unique();
-        });
-    }
+    final class CreateUsersTable extends Migration {
+        @Override
+        public String name() {
+            return "2026_10_31_000000_create_users_table";
+        }
 
-    @Override
-    public void down(Schema schema) {
-        schema.drop("users");
+        @Override
+        public void up(Schema schema) {
+            schema.create("users", table -> {
+                table.id();
+                table.string("email").unique();
+            });
+        }
+
+        @Override
+        public void down(Schema schema) {
+            schema.drop("users");
+        }
     }
-}
-```
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    import org.aristonis.diwan.database.migrations.Migration
+    import org.aristonis.diwan.database.schema.Schema
+
+    class CreateUsersTable : Migration() {
+        override fun name() = "2026_10_31_000000_create_users_table"
+
+        override fun up(schema: Schema) {
+            schema.create("users") { table ->
+                table.id()
+                table.string("email").unique()
+            }
+        }
+
+        override fun down(schema: Schema) {
+            schema.drop("users")
+        }
+    }
+    ```
 
 ابدأ كل اسم بتاريخه، لأن الـ migrations المعلقة تُنفذ بترتيب الاسم. لا تعِد تسمية migration نُفذت في أي مكان. أنت تسرد الـ migrations في الكود: لا شيء يُكتشف بمسح الـ classpath (مسار الأصناف). لتنفيذ SQL خام داخل `up` أو `down` استخدم `schema.connection()` ليدخل الـ SQL في transaction (معاملة) الخاصة بالـ migration.
 
@@ -37,21 +61,41 @@ final class CreateUsersTable extends Migration {
 
 تعيد `manager.migrator(name)` كائن `Migrator.Builder` لذلك الاتصال، مبنيًا من إعداده. بدون manager استعمل `Migrator.builder(SQLiteSchema.of(connection))` أو ما يقابله في `PostgresSchema`.
 
-```java
-import org.aristonis.diwan.database.migrations.Migrator;
+=== "Java"
 
-Migrator migrator = manager.migrator("main")
-        .add(new CreateUsersTable())
-        .add(new AddBioToUsers())
-        .build();
+    ```java
+    import org.aristonis.diwan.database.migrations.Migrator;
 
-migrator.run();               // pending migrations, one batch
-migrator.run(true);           // one batch per migration
-migrator.rollback();          // the last batch
-migrator.rollbackSteps(2);    // the last two migrations
-migrator.rollbackBatch(3);    // one named batch
-migrator.reset();             // everything
-```
+    Migrator migrator = manager.migrator("main")
+            .add(new CreateUsersTable())
+            .add(new AddBioToUsers())
+            .build();
+
+    migrator.run();               // pending migrations, one batch
+    migrator.run(true);           // one batch per migration
+    migrator.rollback();          // the last batch
+    migrator.rollbackSteps(2);    // the last two migrations
+    migrator.rollbackBatch(3);    // one named batch
+    migrator.reset();             // everything
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    import org.aristonis.diwan.database.migrations.Migrator
+
+    val migrator = manager.migrator("main")
+        .add(CreateUsersTable())
+        .add(AddBioToUsers())
+        .build()
+
+    migrator.run()               // pending migrations, one batch
+    migrator.run(true)           // one batch per migration
+    migrator.rollback()          // the last batch
+    migrator.rollbackSteps(2)    // the last two migrations
+    migrator.rollbackBatch(3)    // one named batch
+    migrator.reset()             // everything
+    ```
 
 كل استدعاء يعيد `List<MigrationResult>` فيها اسم الـ migration ونتيجتها `Outcome` (وهي `RAN` أو `SKIPPED` أو `ROLLED_BACK` أو `NOT_FOUND` أو `PRETENDED`) ورقم الـ batch والـ SQL الذي نُفذ.
 
@@ -59,22 +103,43 @@ migrator.reset();             // everything
 
 ### البدء من الصفر
 
-```java
-migrator.fresh();     // drop every view and table, then run all migrations
-```
+=== "Java"
+
+    ```java
+    migrator.fresh();     // drop every view and table, then run all migrations
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    migrator.fresh()     // drop every view and table, then run all migrations
+    ```
 
 تستدعي `fresh()` الدالتين `schema.dropAllViews()` و`schema.dropAllTables()`، ومنها جدول الـ migrations، ثم `run()`، وتعيد ما تعيده `run()`. استعملها لقواعد الاختبار والقواعد المحلية، لا لقاعدة منشورة. انظر [الـ Schema builder](schema.md#list-and-drop-everything) لما يُحذف، و[الاختبار](testing.md) للـ extension الذي يستدعيها.
 
 ### الحالة وpretend
 
-```java
-for (MigrationStatus s : migrator.status()) {
-    System.out.println(s.name() + " " + s.state() + " " + s.batch());   // RAN, PENDING or MISSING
-}
-migrator.pretendRun().forEach(r -> System.out.println(r.name() + " " + r.queries()));
-migrator.pretendRollback();
-migrator.pretendReset();
-```
+=== "Java"
+
+    ```java
+    for (MigrationStatus s : migrator.status()) {
+        System.out.println(s.name() + " " + s.state() + " " + s.batch());   // RAN, PENDING or MISSING
+    }
+    migrator.pretendRun().forEach(r -> System.out.println(r.name() + " " + r.queries()));
+    migrator.pretendRollback();
+    migrator.pretendReset();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    for (s in migrator.status()) {
+        println("${s.name()} ${s.state()} ${s.batch()}")   // RAN, PENDING or MISSING
+    }
+    migrator.pretendRun().forEach { println("${it.name()} ${it.queries()}") }
+    migrator.pretendRollback()
+    migrator.pretendReset()
+    ```
 
 تشغيلات pretend (وضع المعاينة دون تنفيذ) تسرد الـ SQL ولا تغير شيئًا. الـ migration التي تفحص `hasTable` ترى هناك قاعدة فارغة، فقد يختلف الـ SQL عن التشغيل الحقيقي.
 
@@ -84,13 +149,25 @@ migrator.pretendReset();
 
 ### اتصالات أخرى واسم الجدول
 
-```java
-Migrator migrator = Migrator.builder(mainSchema)
+=== "Java"
+
+    ```java
+    Migrator migrator = Migrator.builder(mainSchema)
+            .connection("reports", reportsSchema)     // a migration whose connection() returns "reports"
+            .table("schema_migrations")               // the default is "migrations"
+            .migrations(List.of(new CreateUsersTable(), new CreateReportsTable()))
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val migrator = Migrator.builder(mainSchema)
         .connection("reports", reportsSchema)     // a migration whose connection() returns "reports"
         .table("schema_migrations")               // the default is "migrations"
-        .migrations(List.of(new CreateUsersTable(), new CreateReportsTable()))
-        .build();
-```
+        .migrations(listOf(CreateUsersTable(), CreateReportsTable()))
+        .build()
+    ```
 
 جدول الـ migrations أعمدته `id` و`migration` (الاسم، حتى 191 حرفًا، فريد) و`batch` و`checksum` (حتى 64 حرفًا، يقبل null). لقراءة الأسماء المنفّذة استعمل `migrator.status()` أو `migrator.repository().getRan()`، لا SQL.
 
@@ -98,22 +175,41 @@ Migrator migrator = Migrator.builder(mainSchema)
 
 الـ `MigrationListener` يراقب عمل الـ migrator. كل دالة فيه اختيارية.
 
-```java
-Migrator migrator = manager.migrator("main")
-        .add(new CreateUsersTable())
-        .listener(new MigrationListener() {
-            @Override
-            public void migrationStarted(MigrationEvent event) {
-                System.out.println("running " + event.name());
+=== "Java"
+
+    ```java
+    Migrator migrator = manager.migrator("main")
+            .add(new CreateUsersTable())
+            .listener(new MigrationListener() {
+                @Override
+                public void migrationStarted(MigrationEvent event) {
+                    System.out.println("running " + event.name());
+                }
+
+                @Override
+                public void migrationFailed(MigrationEvent event, Throwable failure) {
+                    System.err.println(event.name() + " failed: " + failure.getMessage());
+                }
+            })
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val migrator = manager.migrator("main")
+        .add(CreateUsersTable())
+        .listener(object : MigrationListener {
+            override fun migrationStarted(event: MigrationEvent) {
+                println("running ${event.name()}")
             }
 
-            @Override
-            public void migrationFailed(MigrationEvent event, Throwable failure) {
-                System.err.println(event.name() + " failed: " + failure.getMessage());
+            override fun migrationFailed(event: MigrationEvent, failure: Throwable) {
+                System.err.println("${event.name()} failed: ${failure.message}")
             }
         })
-        .build();
-```
+        .build()
+    ```
 
 | الدالة | متى تُستدعى |
 |---|---|
@@ -130,20 +226,41 @@ Migrator migrator = manager.migrator("main")
 
 لا شيء يمنع عمليتين من التهجير معًا ما لم تضف قفلًا. لدى PostgreSQL قفل مبني على advisory lock (قفل استشاري في PostgreSQL).
 
-```java
-Migrator migrator = manager.migrator("main")     // carries the PostgreSQL lock by itself
-        .add(new CreateUsersTable())
-        .build();
-```
+=== "Java"
+
+    ```java
+    Migrator migrator = manager.migrator("main")     // carries the PostgreSQL lock by itself
+            .add(new CreateUsersTable())
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val migrator = manager.migrator("main")     // carries the PostgreSQL lock by itself
+        .add(CreateUsersTable())
+        .build()
+    ```
 
 بدون manager ابنِ الـ migrator على وحدة الـ grammar ومرّر القفل بنفسك:
 
-```java
-Migrator migrator = Migrator.builder(PostgresSchema.of(connection))
-        .lock(new PostgresMigrationLock(dataSource))     // waits up to 60 seconds by default
-        .add(new CreateUsersTable())
-        .build();
-```
+=== "Java"
+
+    ```java
+    Migrator migrator = Migrator.builder(PostgresSchema.of(connection))
+            .lock(new PostgresMigrationLock(dataSource))     // waits up to 60 seconds by default
+            .add(new CreateUsersTable())
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val migrator = Migrator.builder(PostgresSchema.of(connection))
+        .lock(PostgresMigrationLock(dataSource))     // waits up to 60 seconds by default
+        .add(CreateUsersTable())
+        .build()
+    ```
 
 لقاعدة أخرى، نفّذ الواجهة `MigrationLock` (الدالتان `acquire()` و`release()`).
 
@@ -153,12 +270,22 @@ Migrator migrator = Migrator.builder(PostgresSchema.of(connection))
 
 الدالة `checksum()` تعيد قيمة ثابتة لذلك الـ migration، تُضبط مرة واحدة. هي تكشف تعديلًا عرضيًا؛ وليست رقم إصدار. افتراضيًا يمكن تعديل migration نُفذت دون أن يلاحظ أحد، لذا تجاوز `checksum()` لتفعّل الفحص.
 
-```java
-@Override
-public Optional<String> checksum() {
-    return Optional.of("1");     // fixed, never changed, or MigrationChecksum.of(text)
-}
-```
+=== "Java"
+
+    ```java
+    @Override
+    public Optional<String> checksum() {
+        return Optional.of("1");     // fixed, never changed, or MigrationChecksum.of(text)
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    override fun checksum(): Optional<String> {
+        return Optional.of("1")     // fixed, never changed, or MigrationChecksum.of(text)
+    }
+    ```
 
 الدالة `MigrationChecksum.of(String)` تعيد SHA-256 (دالة تجزئة) بصيغة hex للنص، بعد تحويل نهايات الأسطر إلى `\n` وتوحيد الحروف المعلَّمة بصيغة Unicode NFC، فلا يهم كيف حُفظ الملف. لا يحسب Diwan hash للكود المترجم أبدًا، لأنه يتغير بين المترجمات وأدوات التصغير.
 
@@ -171,18 +298,34 @@ public Optional<String> checksum() {
 
 الـ seeder (مُغذّي بيانات البداية) يملأ الجداول ببيانات البداية. ورّث `Seeder` واستخدم `SeedContext`.
 
-```java
-final class DatabaseSeeder extends Seeder {
-    @Override
-    protected void run(SeedContext context) {
-        context.query().table("users").insertOrIgnore(Map.of("email", "admin@example.com"));
-        context.call(RolesSeeder::new);        // callOnce skips a seeder already run, callSilent hides its events
-    }
-}
+=== "Java"
 
-manager.seed(DatabaseSeeder::new);                                             // a DatabaseManager
-manager.seed(DatabaseSeeder::new, SeedOptions.defaults().inTransaction(true));
-```
+    ```java
+    final class DatabaseSeeder extends Seeder {
+        @Override
+        protected void run(SeedContext context) {
+            context.query().table("users").insertOrIgnore(Map.of("email", "admin@example.com"));
+            context.call(RolesSeeder::new);        // callOnce skips a seeder already run, callSilent hides its events
+        }
+    }
+
+    manager.seed(DatabaseSeeder::new);                                             // a DatabaseManager
+    manager.seed(DatabaseSeeder::new, SeedOptions.defaults().inTransaction(true));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    class DatabaseSeeder : Seeder() {
+        override fun run(context: SeedContext) {
+            context.query().table("users").insertOrIgnore(mapOf("email" to "admin@example.com"))
+            context.call(::RolesSeeder)        // callOnce skips a seeder already run, callSilent hides its events
+        }
+    }
+
+    manager.seed(::DatabaseSeeder)                                             // a DatabaseManager
+    manager.seed(::DatabaseSeeder, SeedOptions.defaults().inTransaction(true))
+    ```
 
 تستطيع `SeedOptions` اختيار اتصال مسمى، ولف التشغيل كله في transaction واحدة، وإضافة `SeederListener`. والـ seeder الذي يستدعي نفسه، مباشرة أو عبر غيره، يرمي `IllegalStateException` تذكر السلسلة.
 

@@ -21,25 +21,45 @@ database.connections.cache.driver=sqlite
 database.connections.cache.database=/var/lib/shop/cache.db
 ```
 
-```java
-ConfigSource source = LayeredConfigSource.of(
+=== "Java"
+
+    ```java
+    ConfigSource source = LayeredConfigSource.of(
+            EnvConfigSource.system(),                         // wins over the file
+            PropertiesConfigSource.of(Path.of("database.properties")));
+
+    DatabaseManager db = DatabaseManager.builder()
+            .config(DatabaseConfig.from(source))
+            .connector(new PostgresConnector(), new SQLiteConnector())
+            .build();
+
+    QueryFactory shop = db.query();          // default connection
+    Schema cache = db.schema("cache");       // built on first use
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val source = LayeredConfigSource.of(
         EnvConfigSource.system(),                         // wins over the file
-        PropertiesConfigSource.of(Path.of("database.properties")));
+        PropertiesConfigSource.of(Path.of("database.properties")))
 
-DatabaseManager db = DatabaseManager.builder()
+    val db = DatabaseManager.builder()
         .config(DatabaseConfig.from(source))
-        .connector(new PostgresConnector(), new SQLiteConnector())
-        .build();
+        .connector(PostgresConnector(), SQLiteConnector())
+        .build()
 
-QueryFactory shop = db.query();          // default connection
-Schema cache = db.schema("cache");       // built on first use
-```
+    val shop = db.query()          // default connection
+    val cache = db.schema("cache") // built on first use
+    ```
 
 دوال وصول أخرى: `connection(name)` و`migrator(name)` (يعيد `Migrator.Builder`) و`usingConnection(name, work)` و`getConnections()` و`hasConnection(name)` و`setDefaultConnection(name)`. اسم غير معروف أو driver (مشغّل) بلا connector (موصّل) يرمي `IllegalArgumentException` يسرد الأسماء المعروفة.
 
 ### مفاتيح الإعداد
 
 كل المفاتيح تبدأ بـ `database.`. والاتصال هو `database.connections.<name>.<key>`.
+
+كل المفاتيح: [Configuration](configuration.md)
 
 | المفتاح | المعنى |
 |---|---|
@@ -72,17 +92,33 @@ Schema cache = db.schema("cache");       // built on first use
 
 على Android ابنِ الإعدادات في الكود:
 
-```java
-DatabaseConfig config = DatabaseConfig.builder()
+=== "Java"
+
+    ```java
+    DatabaseConfig config = DatabaseConfig.builder()
+            .defaultConnection("app")
+            .connection(ConnectionConfig.builder("app").driver("android").build())
+            .build();
+
+    DatabaseManager db = DatabaseManager.builder()
+            .config(config)
+            .connector(AndroidConnector.of(() -> helper, SQLiteQuery::of, SQLiteSchema::of))
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val config = DatabaseConfig.builder()
         .defaultConnection("app")
         .connection(ConnectionConfig.builder("app").driver("android").build())
-        .build();
+        .build()
 
-DatabaseManager db = DatabaseManager.builder()
+    val db = DatabaseManager.builder()
         .config(config)
-        .connector(AndroidConnector.of(() -> helper, SQLiteQuery::of, SQLiteSchema::of))
-        .build();
-```
+        .connector(AndroidConnector.of({ helper }, SQLiteQuery::of, SQLiteSchema::of))
+        .build()
+    ```
 
 ### انتظار القفل (lock wait)
 
@@ -116,12 +152,23 @@ database.connections.main.lock_wait=5s
 
 ## بدون manager
 
-```java
-Connection db = Connection.builder()
+=== "Java"
+
+    ```java
+    Connection db = Connection.builder()
+            .name("main")
+            .dataSource(dataSource)        // any javax.sql.DataSource, pooled or not
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val db = Connection.builder()
         .name("main")
         .dataSource(dataSource)        // any javax.sql.DataSource, pooled or not
-        .build();
-```
+        .build()
+    ```
 
 | دالة الـ builder (باني الكائن) | الأثر |
 |---|---|
@@ -150,61 +197,121 @@ Connection db = Connection.builder()
 
 ## المعاملات
 
-```java
-int removed = db.transaction(tx -> {
-    tx.update("update users set email = ? where id = ?", "ada@example.org", 1);
-    return tx.delete("delete from users where email like ?", "%@spam.test");
-});
-```
+=== "Java"
+
+    ```java
+    int removed = db.transaction(tx -> {
+        tx.update("update users set email = ? where id = ?", "ada@example.org", 1);
+        return tx.delete("delete from users where email like ?", "%@spam.test");
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val removed = db.transaction { tx ->
+        tx.update("update users set email = ? where id = ?", "ada@example.org", 1)
+        tx.delete("delete from users where email like ?", "%@spam.test")
+    }
+    ```
 
 تُثبَّت المعاملة (commit) حين يعود الـ callback (دالة يستدعيها النظام)، وتُلغى (rollback) حين يرمي. استعمل الاتصال الذي سُلّم إليك (`tx`) لكل شيء بالداخل. وداخل المعاملة استدعِ `db.on(tx)` حتى يعمل العمل على المعاملة.
 
 مع try-with-resources يلغي الـ scope المعاملة عند الإغلاق ما لم تُنفَّذ `commit()`:
 
-```java
-try (TransactionScope tx = db.beginTransaction()) {
-    tx.insert("insert into users (email) values (?)", "grace@example.com");
-    tx.commit();
-}
-```
+=== "Java"
+
+    ```java
+    try (TransactionScope tx = db.beginTransaction()) {
+        tx.insert("insert into users (email) values (?)", "grace@example.com");
+        tx.commit();
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.beginTransaction().use { tx ->
+        tx.insert("insert into users (email) values (?)", "grace@example.com")
+        tx.commit()
+    }
+    ```
 
 ### Savepoints
 
 المعاملة داخل معاملة تستعمل savepoint (نقطة حفظ داخل المعاملة يمكن التراجع إليها وحدها). إذا رمى الـ callback الداخلي والخارجي التقط الاستثناء، يُلغى العمل الداخلي فقط:
 
-```java
-db.transaction(outer -> {
-    outer.insert("insert into logs (msg) values (?)", "start");
-    try {
-        outer.transaction(inner -> inner.insert("insert into logs (msg) values (?)", "risky"));
-    } catch (RuntimeException ignored) {
-        // "risky" is undone, "start" survives
+=== "Java"
+
+    ```java
+    db.transaction(outer -> {
+        outer.insert("insert into logs (msg) values (?)", "start");
+        try {
+            outer.transaction(inner -> inner.insert("insert into logs (msg) values (?)", "risky"));
+        } catch (RuntimeException ignored) {
+            // "risky" is undone, "start" survives
+        }
+        return null;
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { outer ->
+        outer.insert("insert into logs (msg) values (?)", "start")
+        try {
+            outer.transaction { inner -> inner.insert("insert into logs (msg) values (?)", "risky") }
+        } catch (ignored: RuntimeException) {
+            // "risky" is undone, "start" survives
+        }
+        null
     }
-    return null;
-});
-```
+    ```
 
 `transactionLevel()` يعيد 0 خارج المعاملة و1 للمعاملة الخارجية. وداخل معاملة تملكها حاوية (Spring) يكون أعلى مستوى لـ Diwan مجرد savepoint، وتحتفظ الحاوية بالـ commit والـ rollback.
 
 ### المحاولات (attempts)
 
-```java
-db.transaction(tx -> transfer(tx), 3);
-```
+=== "Java"
+
+    ```java
+    db.transaction(tx -> transfer(tx), 3);
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction({ tx -> transfer(tx) }, 3)
+    ```
 
 عند deadlock (تعانق) أو فشل serialization (تحويل النموذج إلى map أو JSON) يُعاد تشغيل الـ callback كله، حتى 3 مرات. والآثار الخارجية داخل الـ callback، كاستدعاء HTTP، تُعاد أيضًا. وفشل `COMMIT` لا يُعاد أبدًا لأنه قد يكون نجح. المعاملة الخارجية وحدها تعيد المحاولة، والمتداخلة ترمي الاستثناء فورًا. وقيمة `attempts` أقل من 1 ترمي `IllegalArgumentException`.
 
 ### انتظار القفل لكل transaction (lock wait per transaction)
 
-```java
-import java.time.Duration;
-import org.aristonis.diwan.database.TransactionOptions;
+=== "Java"
 
-db.transaction(tx -> transfer(tx), TransactionOptions.lockWait(Duration.ofSeconds(2)));
+    ```java
+    import java.time.Duration;
+    import org.aristonis.diwan.database.TransactionOptions;
 
-db.transaction(tx -> transfer(tx),
-        TransactionOptions.lockWait(Duration.ofMillis(500)).withAttempts(3));
-```
+    db.transaction(tx -> transfer(tx), TransactionOptions.lockWait(Duration.ofSeconds(2)));
+
+    db.transaction(tx -> transfer(tx),
+            TransactionOptions.lockWait(Duration.ofMillis(500)).withAttempts(3));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    import java.time.Duration
+    import org.aristonis.diwan.database.TransactionOptions
+
+    db.transaction({ tx -> transfer(tx) }, TransactionOptions.lockWait(Duration.ofSeconds(2)))
+
+    db.transaction({ tx -> transfer(tx) },
+        TransactionOptions.lockWait(Duration.ofMillis(500)).withAttempts(3))
+    ```
 
 تنتظر الـ transaction أي قفل هذه المدة كحد أقصى. على PostgreSQL ينفّذ Diwan ‏`SET LOCAL lock_timeout` بعد `BEGIN` مباشرة، فينتهي أثره بانتهاء الـ transaction. وعلى SQLite وAndroid يضبط `busy_timeout` قبل `BEGIN` ويعيد القيمة القديمة بعد الـ commit أو الفشل.
 
@@ -216,14 +323,27 @@ db.transaction(tx -> transfer(tx),
 
 ### afterCommit و afterRollback
 
-```java
-db.transaction(tx -> {
-    tx.insert("insert into orders (id, total) values (?, ?)", orderId, total);
-    tx.afterCommit(() -> mailer.sendReceipt(orderId));
-    tx.afterRollback(() -> LOG.warning("order was not saved"));
-    return orderId;
-});
-```
+=== "Java"
+
+    ```java
+    db.transaction(tx -> {
+        tx.insert("insert into orders (id, total) values (?, ?)", orderId, total);
+        tx.afterCommit(() -> mailer.sendReceipt(orderId));
+        tx.afterRollback(() -> LOG.warning("order was not saved"));
+        return orderId;
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { tx ->
+        tx.insert("insert into orders (id, total) values (?, ?)", orderId, total)
+        tx.afterCommit { mailer.sendReceipt(orderId) }
+        tx.afterRollback { LOG.warning("order was not saved") }
+        orderId
+    }
+    ```
 
 - خارج المعاملة تعمل `afterCommit` فورًا وتُهمَل `afterRollback`.
 - callbacks الـ `afterCommit` تعمل بعد commit المعاملة الخارجية. والـ savepoint الذي أُلغي يُسقط callbacks الخاصة به.
@@ -237,13 +357,25 @@ db.transaction(tx -> {
 
 افتراضيًا يرفض الاتصال الجذر الاستدعاءات القادمة من خيط داخل إحدى معاملاته. فمثل هذا الاستدعاء يستعير اتصالًا ثانيًا ويكتب خارج الـ rollback وقد يجمّد pool صغيرًا. والفشل هو `IllegalStateException` يطلب منك استعمال `tx`.
 
-```java
-Connection db = Connection.builder()
+=== "Java"
+
+    ```java
+    Connection db = Connection.builder()
+            .name("main")
+            .dataSource(dataSource)
+            .strictTransactions(false)     // only for deliberate writes outside, like an audit log
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val db = Connection.builder()
         .name("main")
         .dataSource(dataSource)
         .strictTransactions(false)     // only for deliberate writes outside, like an audit log
-        .build();
-```
+        .build()
+    ```
 
 ### الجلسات (sessions)
 
@@ -253,12 +385,23 @@ Connection db = Connection.builder()
 
 سجّل المستمعين على `events()` الخاصة بالاتصال:
 
-```java
-Registration slow = db.events().whenQueryTakesLongerThan(
-        Duration.ofMillis(500),
-        event -> LOG.warning("slow query " + event.time().toMillis() + " ms: " + event.redacted()));
-slow.remove();
-```
+=== "Java"
+
+    ```java
+    Registration slow = db.events().whenQueryTakesLongerThan(
+            Duration.ofMillis(500),
+            event -> LOG.warning("slow query " + event.time().toMillis() + " ms: " + event.redacted()));
+    slow.remove();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val slow = db.events().whenQueryTakesLongerThan(Duration.ofMillis(500)) { event ->
+        LOG.warning("slow query ${event.time().toMillis()} ms: ${event.redacted()}")
+    }
+    slow.remove()
+    ```
 
 | الاستدعاء | الاستعمال |
 |---|---|
@@ -275,20 +418,39 @@ slow.remove();
 
 ### سجل الاستعلامات
 
-```java
-ConnectionEvents events = db.events();
-events.enableQueryLog();
-List<LoggedQuery> log = events.getQueryLog();   // a copy, oldest first
-events.flushQueryLog();
-```
+=== "Java"
+
+    ```java
+    ConnectionEvents events = db.events();
+    events.enableQueryLog();
+    List<LoggedQuery> log = events.getQueryLog();   // a copy, oldest first
+    events.flushQueryLog();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val events = db.events()
+    events.enableQueryLog()
+    val log = events.queryLog   // a copy, oldest first
+    events.flushQueryLog()
+    ```
 
 السجل مُطفأ افتراضيًا ومحدود الحجم. وعندما يكون `showBindingsInErrors` مُطفأ يخزّن السجل `?` بدل كل binding (معامل مربوط بالاستعلام). فعّله في نسخة debug فقط.
 
 ## وضع pretend
 
-```java
-List<LoggedQuery> plan = db.pretend(p -> p.statement("drop table users"));
-```
+=== "Java"
+
+    ```java
+    List<LoggedQuery> plan = db.pretend(p -> p.statement("drop table users"));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val plan = db.pretend { p -> p.statement("drop table users") }
+    ```
 
 لا شيء يصل إلى قاعدة البيانات. القراءات لا تعيد صفوفًا، والأعداد 0، و`statement` تعيد `true`. ويرى المستمعون العبارات بزمن صفر.
 
@@ -296,19 +458,38 @@ List<LoggedQuery> plan = db.pretend(p -> p.statement("drop table users"));
 
 اتصالات الـ manager الخاصة تستعمل `DriverManager` وتفتح اتصال JDBC جديدًا عند كل استعارة. هذا يناسب الاختبارات والأدوات الصغيرة. أما الخادم فيجب أن يعطي الـ manager `DataSource` مجمّعًا، كما في وصفة HikariCP (مكتبة pool شائعة لـ JDBC) هذه:
 
-```java
-HikariConfig hikari = new HikariConfig();
-hikari.setJdbcUrl("jdbc:postgresql://db.internal:5432/shop");
-hikari.setUsername("shop");
-hikari.setPassword(System.getenv("DB_PASSWORD"));
-hikari.setMaximumPoolSize(10);
+=== "Java"
 
-DatabaseManager db = DatabaseManager.builder()
+    ```java
+    HikariConfig hikari = new HikariConfig();
+    hikari.setJdbcUrl("jdbc:postgresql://db.internal:5432/shop");
+    hikari.setUsername("shop");
+    hikari.setPassword(System.getenv("DB_PASSWORD"));
+    hikari.setMaximumPoolSize(10);
+
+    DatabaseManager db = DatabaseManager.builder()
+            .config(config)
+            .connector(new PostgresConnector())
+            .dataSource("main", () -> new HikariDataSource(hikari))
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val hikari = HikariConfig().apply {
+        jdbcUrl = "jdbc:postgresql://db.internal:5432/shop"
+        username = "shop"
+        password = System.getenv("DB_PASSWORD")
+        maximumPoolSize = 10
+    }
+
+    val db = DatabaseManager.builder()
         .config(config)
-        .connector(new PostgresConnector())
-        .dataSource("main", () -> new HikariDataSource(hikari))
-        .build();
-```
+        .connector(PostgresConnector())
+        .dataSource("main") { HikariDataSource(hikari) }
+        .build()
+    ```
 
 يعمل الـ supplier حين يُبنى الاتصال أول مرة. وتغلق Diwan الـ data source الذي يطبّق `AutoCloseable` عند `purge` أو `close`، و`HikariDataSource` كذلك. واسم غير مُعدّ يُرفض عند بناء الـ manager. ومع الاتصال المباشر مرّر الـ pool إلى `Connection.builder().dataSource(pool)` وأغلقه بنفسك.
 

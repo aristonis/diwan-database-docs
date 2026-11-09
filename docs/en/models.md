@@ -6,27 +6,55 @@ so the SQL is the SQL you would get from `table(...)`.
 
 Models live in `diwan-database-eloquent`:
 
-```kotlin
-implementation("org.aristonis:diwan-database-eloquent:0.3.0")
-```
+=== "Gradle (Kotlin)"
+    ```kotlin
+    implementation("org.aristonis:diwan-database-eloquent:0.3.0")
+    ```
+=== "Gradle (Groovy)"
+    ```groovy
+    implementation 'org.aristonis:diwan-database-eloquent:0.3.0'
+    ```
+=== "Maven"
+    ```xml
+    <dependency>
+        <groupId>org.aristonis</groupId>
+        <artifactId>diwan-database-eloquent</artifactId>
+        <version>0.3.0</version>
+    </dependency>
+    ```
 
 ## Define a model
 
 A model needs one static entry. It uses no reflection, annotations or build plugin, so the same
 class runs on Android.
 
-```java
-public final class User extends Model {
-    public static final ModelQuery<User> query = ModelQuery.of(User.class, User::new);
+=== "Java"
+    ```java
+    public final class User extends Model {
+        public static final ModelQuery<User> query = ModelQuery.of(User.class, User::new);
 
-    @Override
-    protected List<String> fillable() {
-        return List.of("name", "email");   // nothing is mass assignable until listed
+        @Override
+        protected List<String> fillable() {
+            return List.of("name", "email");   // nothing is mass assignable until listed
+        }
     }
-}
 
-ModelQuery<User> users = User.query.on(manager.query());
-```
+    ModelQuery<User> users = User.query.on(manager.query());
+    ```
+=== "Kotlin"
+    ```kotlin
+    class User : Model() {
+        override fun fillable(): List<String> {
+            return listOf("name", "email")   // nothing is mass assignable until listed
+        }
+
+        companion object {
+            val query: ModelQuery<User> = ModelQuery.of(User::class.java, ::User)
+        }
+    }
+
+    val users: ModelQuery<User> = User.query.on(manager.query())
+    ```
 
 `on(...)` binds the entry to a query factory, normally `manager.query()`, so the model never names a driver class. Inside a transaction, bind with `User.query.on(db.on(tx))` so every statement runs on the transaction.
 
@@ -53,42 +81,78 @@ The plural comes from a short English rule set. Override `table()` when it guess
 is `*` and `fillable()` is empty), `fill` throws `MassAssignmentException`. `forceFill` and
 `Model.unguarded(...)` bypass the guards.
 
-```java
-User user = users.make(request);   // fills; "is_admin" in request is dropped
-user.save();
-```
+=== "Java"
+    ```java
+    User user = users.make(request);   // fills; "is_admin" in request is dropped
+    user.save();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val user = users.make(request)   // fills; "is_admin" in request is dropped
+    user.save()
+    ```
 
 ## Attributes, accessors and casts
 
-```java
-found.setAttribute("name", "Ada L.");
-found.isDirty("name");      // true
-found.getDirty();           // {name=Ada L.}
-found.save();               // writes name and updated_at only
-found.save();               // clean: runs nothing
-```
+=== "Java"
+    ```java
+    found.setAttribute("name", "Ada L.");
+    found.isDirty("name");      // true
+    found.getDirty();           // {name=Ada L.}
+    found.save();               // writes name and updated_at only
+    found.save();               // clean: runs nothing
+    ```
+=== "Kotlin"
+    ```kotlin
+    found.setAttribute("name", "Ada L.")
+    found.isDirty("name")      // true
+    found.dirty                // {name=Ada L.}
+    found.save()               // writes name and updated_at only
+    found.save()               // clean: runs nothing
+    ```
 
 Declare casts in `casts()` with Laravel's string form or the typed factories in `Casts`:
 
-```java
-@Override
-protected Map<String, Cast<?>> casts() {
-    return CastMap.create()
+=== "Java"
+    ```java
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create()
+                .put("price", "decimal:2")                      // BigDecimal, scale 2
+                .put("is_admin", "bool")                        // Boolean
+                .put("options", "json")                         // Map or List
+                .put("born_on", "date")                         // LocalDate
+                .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
+                .put("status", Casts.enumOf(Status.class))      // the enum constant
+                .build();
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create()
             .put("price", "decimal:2")                      // BigDecimal, scale 2
             .put("is_admin", "bool")                        // Boolean
             .put("options", "json")                         // Map or List
             .put("born_on", "date")                         // LocalDate
             .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
-            .put("status", Casts.enumOf(Status.class))      // the enum constant
-            .build();
-}
-```
+            .put("status", Casts.enumOf(Status::class.java))      // the enum constant
+            .build()
+    }
+    ```
 
-```java
-Order order = orders.findOrFail(1);
-BigDecimal price = (BigDecimal) order.getAttribute("price");
-order.getAttributes().get("price");   // the stored form, "12.50"
-```
+=== "Java"
+    ```java
+    Order order = orders.findOrFail(1);
+    BigDecimal price = (BigDecimal) order.getAttribute("price");
+    order.getAttributes().get("price");   // the stored form, "12.50"
+    ```
+=== "Kotlin"
+    ```kotlin
+    val order = orders.findOrFail(1)
+    val price = order.getAttribute("price") as BigDecimal
+    order.attributes["price"]   // the stored form, "12.50"
+    ```
 
 Bad stored data, such as broken JSON or `"abc"` under `int`, throws `InvalidCastException`.
 Laravel reads `null` or `0` there. The dirty check compares by meaning: JSON by structure, moments
@@ -104,27 +168,46 @@ by soft delete, bulk update and touch, always in the model's format. So when tho
 `instant`, the model needs `TimestampFormat.INSTANT`. A model on the TEXT format that puts the
 instant cast on one of them fails at first use, and the message names the column.
 
-```java
-@Override
-protected TimestampFormat timestampFormat() { return TimestampFormat.INSTANT; }
+=== "Java"
+    ```java
+    @Override
+    protected TimestampFormat timestampFormat() { return TimestampFormat.INSTANT; }
 
-@Override
-protected Map<String, Cast<?>> casts() {
-    return CastMap.create().put("sent_at", Casts.instant()).build();   // any other instant column
-}
-```
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create().put("sent_at", Casts.instant()).build();   // any other instant column
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun timestampFormat(): TimestampFormat = TimestampFormat.INSTANT
+
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create().put("sent_at", Casts.instant()).build()   // any other instant column
+    }
+    ```
 
 Accessors and mutators are registered in `accessors()`, not discovered by name:
 
-```java
-@Override
-protected Map<String, Attribute<?>> accessors() {
-    Map<String, Attribute<?>> map = new LinkedHashMap<>();
-    map.put("display_name", Attribute.get((model, value, attrs) -> attrs.get("first") + " " + attrs.get("last")));
-    map.put("email", Attribute.set((model, value, attrs) -> value.toString().toLowerCase(Locale.ROOT)));
-    return map;
-}
-```
+=== "Java"
+    ```java
+    @Override
+    protected Map<String, Attribute<?>> accessors() {
+        Map<String, Attribute<?>> map = new LinkedHashMap<>();
+        map.put("display_name", Attribute.get((model, value, attrs) -> attrs.get("first") + " " + attrs.get("last")));
+        map.put("email", Attribute.set((model, value, attrs) -> value.toString().toLowerCase(Locale.ROOT)));
+        return map;
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun accessors(): Map<String, Attribute<*>> {
+        val map = LinkedHashMap<String, Attribute<*>>()
+        map["display_name"] = Attribute.get<Any> { model, value, attrs -> "${attrs["first"]} ${attrs["last"]}" }
+        map["email"] = Attribute.set<Any> { model, value, attrs -> value.toString().lowercase(Locale.ROOT) }
+        return map
+    }
+    ```
 
 `casts()` and `accessors()` are read once per class, so they must not depend on instance state.
 
@@ -134,16 +217,27 @@ protected Map<String, Attribute<?>> accessors() {
 Laravel does. For money, declare the column with the same numbers as its migration, so the cast
 checks what the column can hold:
 
-```java
-// migration: table.decimal("total", 6, 2)   -- 6 digits in all, 2 after the point
-@Override
-protected Map<String, Cast<?>> casts() {
-    return CastMap.create()
+=== "Java"
+    ```java
+    // migration: table.decimal("total", 6, 2)   -- 6 digits in all, 2 after the point
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create()
+                .put("total", Casts.decimal(6, 2))                          // decimal:6,2
+                .put("tax", Casts.decimal(6, 2, RoundingMode.HALF_EVEN))    // decimal:6,2,HALF_EVEN
+                .build();
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    // migration: table.decimal("total", 6, 2)   -- 6 digits in all, 2 after the point
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create()
             .put("total", Casts.decimal(6, 2))                          // decimal:6,2
             .put("tax", Casts.decimal(6, 2, RoundingMode.HALF_EVEN))    // decimal:6,2,HALF_EVEN
-            .build();
-}
-```
+            .build()
+    }
+    ```
 
 The spec strings work too: `decimal:6,2` and `decimal:6,2,HALF_EVEN` (the mode name in any
 case). The first number is the total digits and the second the digits after the point. Both must
@@ -182,26 +276,44 @@ This is a behavior change for upgraders: a value that was accepted before and ca
 digits now throws. To keep longer exact values on SQLite, use a text column with
 `Casts.decimalText(precision, scale)`, which keeps the strict precision and scale rules but skips the 15-digit limit:
 
-```java
-// migration: table.string("rate")   -- text column, exact digits
-.put("rate", Casts.decimalText(30, 15))
-```
+=== "Java"
+    ```java
+    // migration: table.string("rate")   -- text column, exact digits
+    .put("rate", Casts.decimalText(30, 15))
+    ```
+=== "Kotlin"
+    ```kotlin
+    // migration: table.string("rate")   -- text column, exact digits
+    .put("rate", Casts.decimalText(30, 15))
+    ```
 
 `Casts.decimal(scale)` (`decimal:2`) is unchanged: it has no precision limit and rounds half up.
 Use the strict form for money, so that a stored value always fits its column.
 
 ## Save, create and find
 
-```java
-User ada = users.create(Map.of("name", "Ada", "email", "ada@example.com"));  // id, timestamps set
-User found = users.findOrFail(ada.getKey());
-Optional<User> maybe = users.find(42);
-Optional<User> first = users.query().where("email", "ada@example.com").first();
+=== "Java"
+    ```java
+    User ada = users.create(Map.of("name", "Ada", "email", "ada@example.com"));  // id, timestamps set
+    User found = users.findOrFail(ada.getKey());
+    Optional<User> maybe = users.find(42);
+    Optional<User> first = users.query().where("email", "ada@example.com").first();
 
-found.update(Map.of("name", "Ada Lovelace"));
-found.increment("logins");
-found.delete();            // false when the model is not in the database
-```
+    found.update(Map.of("name", "Ada Lovelace"));
+    found.increment("logins");
+    found.delete();            // false when the model is not in the database
+    ```
+=== "Kotlin"
+    ```kotlin
+    val ada = users.create(mapOf("name" to "Ada", "email" to "ada@example.com"))  // id, timestamps set
+    val found = users.findOrFail(ada.key)
+    val maybe: Optional<User> = users.find(42)
+    val first: Optional<User> = users.query().where("email", "ada@example.com").first()
+
+    found.update(mapOf("name" to "Ada Lovelace"))
+    found.increment("logins")
+    found.delete()            // false when the model is not in the database
+    ```
 
 `saveOrFail()` saves, and runs its touches, in one transaction. It throws `IllegalStateException`
 when a model with a non-incrementing key has nothing to insert. Plain `save()` returns `true` there,
@@ -209,31 +321,52 @@ as in Laravel.
 
 Find or make a row:
 
-```java
-User sam = users.firstOrCreate(Map.of("email", "sam@example.com"), Map.of("name", "Sam"));
-users.updateOrCreate(Map.of("email", "sam@example.com"), Map.of("name", "Samuel"));
-users.firstOrNew(Map.of("email", "new@example.com"), Map.of("name", "New"));   // not saved
-```
+=== "Java"
+    ```java
+    User sam = users.firstOrCreate(Map.of("email", "sam@example.com"), Map.of("name", "Sam"));
+    users.updateOrCreate(Map.of("email", "sam@example.com"), Map.of("name", "Samuel"));
+    users.firstOrNew(Map.of("email", "new@example.com"), Map.of("name", "New"));   // not saved
+    ```
+=== "Kotlin"
+    ```kotlin
+    val sam = users.firstOrCreate(mapOf("email" to "sam@example.com"), mapOf("name" to "Sam"))
+    users.updateOrCreate(mapOf("email" to "sam@example.com"), mapOf("name" to "Samuel"))
+    users.firstOrNew(mapOf("email" to "new@example.com"), mapOf("name" to "New"))   // not saved
+    ```
 
 `upsert` and `insertOrIgnore` write many rows in one statement. They skip model events and casts,
 but fill unique ids and timestamps:
 
-```java
-users.query().upsert(rows, List.of("email"));          // needs a unique index on email
-users.query().upsert(rows, List.of("email"), List.of("name"));
-users.query().insertOrIgnore(rows);
-```
+=== "Java"
+    ```java
+    users.query().upsert(rows, List.of("email"));          // needs a unique index on email
+    users.query().upsert(rows, List.of("email"), List.of("name"));
+    users.query().insertOrIgnore(rows);
+    ```
+=== "Kotlin"
+    ```kotlin
+    users.query().upsert(rows, listOf("email"))          // needs a unique index on email
+    users.query().upsert(rows, listOf("email"), listOf("name"))
+    users.query().insertOrIgnore(rows)
+    ```
 
 `upsert` needs SQLite 3.24 or later, which means Android API 30 or later. See [Android](android.md).
 
 `fillAndInsert`, `fillAndInsertOrIgnore` and `fillAndInsertGetId` fill each row as `fill` does, then
 insert it. They are called on the model builder, not on `ModelQuery`:
 
-```java
-Member.query.on(db).query().fillAndInsert(rows);
-int added = Member.query.on(db).query().fillAndInsertOrIgnore(rows);
-Object id = Member.query.on(db).query().fillAndInsertGetId(row);
-```
+=== "Java"
+    ```java
+    Member.query.on(db).query().fillAndInsert(rows);
+    int added = Member.query.on(db).query().fillAndInsertOrIgnore(rows);
+    Object id = Member.query.on(db).query().fillAndInsertGetId(row);
+    ```
+=== "Kotlin"
+    ```kotlin
+    Member.query.on(db).query().fillAndInsert(rows)
+    val added = Member.query.on(db).query().fillAndInsertOrIgnore(rows)
+    val id = Member.query.on(db).query().fillAndInsertGetId(row)
+    ```
 
 The fill skips the fillable guard, so never pass request data to these methods unchecked. Casts
 apply, unique ids and timestamps are set, and a `created_at` or `updated_at` the row already has is
@@ -247,13 +380,22 @@ limit (999 on SQLite before 3.32).
 declares. Without a name it uses the parent's class name in camel case, so `user` for `User`. Under
 R8 or other renaming, pass the relation name:
 
-```java
-ModelQuery<Post> posts = Post.query.on(db);
-posts.query().whereBelongsTo(ada).get();                          // relation "user"
-posts.query().whereBelongsTo(ada, "author").get();
-posts.query().whereBelongsTo(List.of(ada, sam), "author").get();  // one in clause
-posts.query().where("pinned", true).orWhereBelongsTo(ada, "author").get();
-```
+=== "Java"
+    ```java
+    ModelQuery<Post> posts = Post.query.on(db);
+    posts.query().whereBelongsTo(ada).get();                          // relation "user"
+    posts.query().whereBelongsTo(ada, "author").get();
+    posts.query().whereBelongsTo(List.of(ada, sam), "author").get();  // one in clause
+    posts.query().where("pinned", true).orWhereBelongsTo(ada, "author").get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val posts = Post.query.on(db)
+    posts.query().whereBelongsTo(ada).get()                          // relation "user"
+    posts.query().whereBelongsTo(ada, "author").get()
+    posts.query().whereBelongsTo(listOf(ada, sam), "author").get()  // one in clause
+    posts.query().where("pinned", true).orWhereBelongsTo(ada, "author").get()
+    ```
 
 The methods refuse an empty collection, a parent of the wrong class and a parent without a key
 value.
@@ -261,29 +403,47 @@ value.
 `pluck(column, key)` returns a map from the key column to the column, with raw values as
 `pluck(column)` gives them:
 
-```java
-Map<Object, Object> ids = Member.query.on(db).query().pluck("id", "code");   // code -> id
-```
+=== "Java"
+    ```java
+    Map<Object, Object> ids = Member.query.on(db).query().pluck("id", "code");   // code -> id
+    ```
+=== "Kotlin"
+    ```kotlin
+    val ids = Member.query.on(db).query().pluck("id", "code")   // code -> id
+    ```
 
 ## Scopes
 
 A global scope adds a constraint to every query of a model, including eager loads and `whereHas`.
 Register it once at start-up, with a name:
 
-```java
-posts.addGlobalScope("tenant", q -> q.where("tenant_id", 7));
+=== "Java"
+    ```java
+    posts.addGlobalScope("tenant", q -> q.where("tenant_id", 7));
 
-posts.query().withoutGlobalScope("tenant").get();   // one query without it
-posts.query().withoutGlobalScopes().get();
-```
+    posts.query().withoutGlobalScope("tenant").get();   // one query without it
+    posts.query().withoutGlobalScopes().get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    posts.addGlobalScope("tenant", Consumer<EloquentBuilder<*>> { q -> q.where("tenant_id", 7) })
+
+    posts.query().withoutGlobalScope("tenant").get()   // one query without it
+    posts.query().withoutGlobalScopes().get()
+    ```
 
 A scope may add query clauses only. It must be stateless and must not run a query itself. A class
 that implements `Scope` registers through `addGlobalScope(Scope)`; a lambda needs a name. A local
 scope is a reusable step you apply to one query:
 
-```java
-posts.query().scope(q -> q.where("published", true)).get();
-```
+=== "Java"
+    ```java
+    posts.query().scope(q -> q.where("published", true)).get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    posts.query().scope { q -> q.where("published", true) }.get()
+    ```
 
 ## Soft deletes
 
@@ -306,18 +466,32 @@ only the soft-delete scope, so a tenant scope still applies.
 
 Register listeners once, at start-up, on the model's `ModelQuery`:
 
-```java
-posts.events()
-        .saving(post -> {                       // return false to stop the save
-            if (post.getString("slug") == null) {
-                post.setAttribute("slug", slugOf(post.getString("title")));
-            }
-            return true;
-        })
-        .created(post -> auditLog.record("post created", post.getKey()));
+=== "Java"
+    ```java
+    posts.events()
+            .saving(post -> {                       // return false to stop the save
+                if (post.getString("slug") == null) {
+                    post.setAttribute("slug", slugOf(post.getString("title")));
+                }
+                return true;
+            })
+            .created(post -> auditLog.record("post created", post.getKey()));
 
-posts.events().observe(new PostObserver());     // a ModelObserver<Post>
-```
+    posts.events().observe(new PostObserver());     // a ModelObserver<Post>
+    ```
+=== "Kotlin"
+    ```kotlin
+    posts.events()
+        .saving { post ->                       // return false to stop the save
+            if (post.getString("slug") == null) {
+                post.setAttribute("slug", slugOf(post.getString("title")))
+            }
+            true
+        }
+        .created { post -> auditLog.record("post created", post.key) }
+
+    posts.events().observe(PostObserver())     // a ModelObserver<Post>
+    ```
 
 The events are `retrieved`, `saving`, `saved`, `creating`, `created`, `updating`, `updated`,
 `deleting`, `deleted`, `softDeleted`, `restoring`, `restored`, `forceDeleting`, `forceDeleted` and
@@ -335,32 +509,55 @@ model and fire no event.
 `toMap()` and `toJson()` apply `visible()`, then `hidden()`, then `appends()`. Moments come out as
 ISO-8601 UTC with microseconds. Loaded relations follow the attributes, and a cycle ends.
 
-```java
-@Override
-protected List<String> hidden() { return List.of("password"); }
+=== "Java"
+    ```java
+    @Override
+    protected List<String> hidden() { return List.of("password"); }
 
-String json = user.toJson();
-```
+    String json = user.toJson();
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun hidden(): List<String> = listOf("password")
+
+    val json = user.toJson()
+    ```
 
 The built-in JSON codec is strict RFC 8259 and the library adds no JSON dependency. To use Jackson
 or Gson, implement `JsonCodec` and return it from `jsonCodec()`.
 
 ## Chunks, lazy reads, cursors and pages
 
-```java
-users.query().orderBy("id").chunk(500, batch -> { batch.forEach(this::sync); return true; });
-users.query().chunkById(500, batch -> { /* rows may change here */ return true; });
+=== "Java"
+    ```java
+    users.query().orderBy("id").chunk(500, batch -> { batch.forEach(this::sync); return true; });
+    users.query().chunkById(500, batch -> { /* rows may change here */ return true; });
 
-for (User u : users.query().orderBy("id").lazy(1000)) { /* one page at a time */ }
+    for (User u : users.query().orderBy("id").lazy(1000)) { /* one page at a time */ }
 
-try (QueryCursor<User> cursor = users.query().orderBy("id").cursor()) {
-    for (User u : cursor) { /* streams one row at a time */ }
-}
+    try (QueryCursor<User> cursor = users.query().orderBy("id").cursor()) {
+        for (User u : cursor) { /* streams one row at a time */ }
+    }
 
-ModelPage<User> page = users.query().orderBy("name").paginate(20, 2);
-page.items();   // ModelCollection<User>
-page.total();
-```
+    ModelPage<User> page = users.query().orderBy("name").paginate(20, 2);
+    page.items();   // ModelCollection<User>
+    page.total();
+    ```
+=== "Kotlin"
+    ```kotlin
+    users.query().orderBy("id").chunk(500) { batch -> batch.forEach { sync(it) }; true }
+    users.query().chunkById(500) { batch -> /* rows may change here */ true }
+
+    for (u in users.query().orderBy("id").lazy(1000)) { /* one page at a time */ }
+
+    users.query().orderBy("id").cursor().use { cursor ->
+        for (u in cursor) { /* streams one row at a time */ }
+    }
+
+    val page = users.query().orderBy("name").paginate(20, 2)
+    page.items()   // ModelCollection<User>
+    page.total()
+    ```
 
 `chunk` pages by offset, so use `chunkById` when rows change during the loop. Always close a
 `cursor()`: an open one keeps its connection. A cursor refuses eager loads; `lazy()` loads them per

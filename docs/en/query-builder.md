@@ -7,42 +7,83 @@ bound as a parameter, so the builder never puts your data into the SQL text.
 
 Ask the `DatabaseManager` for a `QueryFactory`. It is built from the connection's configuration, so your code never names a driver class and switching the database is a configuration change. Call `table(...)` on it to start a query.
 
-```java
-import org.aristonis.diwan.database.query.QueryFactory;
+=== "Java"
 
-QueryFactory query = manager.query();            // the default connection
-QueryFactory cache = manager.query("cache");     // a named connection
-```
+    ```java
+    import org.aristonis.diwan.database.query.QueryFactory;
+
+    QueryFactory query = manager.query();            // the default connection
+    QueryFactory cache = manager.query("cache");     // a named connection
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    import org.aristonis.diwan.database.query.QueryFactory
+
+    val query = manager.query()            // the default connection
+    val cache = manager.query("cache")     // a named connection
+    ```
 
 `manager` is the `DatabaseManager` from [Connections and transactions](connections.md). A builder is not thread-safe. `clone()` gives an independent copy. The examples on this page call the factory `query`.
 
 Without a manager, take the factory from the grammar module of your database:
 
-```java
-QueryFactory query = SQLiteQuery.of(connection);       // SQLite, and Android through the same grammar
-// QueryFactory query = PostgresQuery.of(connection);  // PostgreSQL
-```
+=== "Java"
+
+    ```java
+    QueryFactory query = SQLiteQuery.of(connection);       // SQLite, and Android through the same grammar
+    // QueryFactory query = PostgresQuery.of(connection);  // PostgreSQL
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val query = SQLiteQuery.of(connection)       // SQLite, and Android through the same grammar
+    // val query = PostgresQuery.of(connection)  // PostgreSQL
+    ```
 
 Inside a transaction, call `query.on(c)` so the work runs on the transaction, as the row locks example below does. On Android, see [Android](android.md).
 
 ## Select and filter
 
-```java
-List<Map<String, Object>> rows = query.table("orders")
+=== "Java"
+
+    ```java
+    List<Map<String, Object>> rows = query.table("orders")
+            .select("id", "total")
+            .where("status", "open")
+            .where("total", ">", 1000)
+            .orWhere("priority", true)
+            .whereIn("region", List.of("eu", "us"))
+            .whereNotNull("customer_id")
+            .orderByDesc("id")
+            .limit(10)
+            .get();
+
+    Optional<Map<String, Object>> one = query.table("users").find(7);
+    Optional<Object> email = query.table("users").where("id", 7).value("email");
+    boolean any = query.table("orders").where("status", "open").exists();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val rows = query.table("orders")
         .select("id", "total")
         .where("status", "open")
         .where("total", ">", 1000)
         .orWhere("priority", true)
-        .whereIn("region", List.of("eu", "us"))
+        .whereIn("region", listOf("eu", "us"))
         .whereNotNull("customer_id")
         .orderByDesc("id")
         .limit(10)
-        .get();
+        .get()
 
-Optional<Map<String, Object>> one = query.table("users").find(7);
-Optional<Object> email = query.table("users").where("id", 7).value("email");
-boolean any = query.table("orders").where("status", "open").exists();
-```
+    val one = query.table("users").find(7)
+    val email = query.table("users").where("id", 7).value("email")
+    val any = query.table("orders").where("status", "open").exists()
+    ```
 
 Rows are `Map<String, Object>`. Other filters include `whereBetween`, `whereLike`,
 `whereContains` (see below), `whereColumn`, `whereAny`, `whereAll`, `whereNone`, grouped conditions
@@ -59,10 +100,19 @@ An empty `whereIn` list matches no row (`0 = 1`). An empty `whereNotIn` list mat
 removes everything the other conditions select. Make sure an empty list really means "none" and not
 "not loaded":
 
-```java
-// "delete the task's alarms except these": with keep empty, every alarm of the task goes
-query.table("alarms").where("task_id", taskId).whereNotIn("id", keep).delete();
-```
+=== "Java"
+
+    ```java
+    // "delete the task's alarms except these": with keep empty, every alarm of the task goes
+    query.table("alarms").where("task_id", taskId).whereNotIn("id", keep).delete();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    // "delete the task's alarms except these": with keep empty, every alarm of the task goes
+    query.table("alarms").where("task_id", taskId).whereNotIn("id", keep).delete()
+    ```
 
 Date wheres (`whereDate`, `whereMonth` and the others) are for text date columns. On an instant
 column use `whereInstantBetween(column, from, to)`.
@@ -72,13 +122,25 @@ column use `whereInstantBetween(column, from, to)`.
 `whereContains`, `whereStartsWith` and `whereEndsWith` find text that a user typed. They always
 treat the text as literal: `%`, `_` and `!` match themselves, never as wildcards.
 
-```java
-List<Map<String, Object>> rows = query.table("users")
+=== "Java"
+
+    ```java
+    List<Map<String, Object>> rows = query.table("users")
+            .whereContains("name", userInput)            // the name holds the input, as typed
+            .orWhereStartsWith("email", prefix)
+            .whereNotEndsWith("email", ".test", true)    // case-sensitive
+            .get();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val rows = query.table("users")
         .whereContains("name", userInput)            // the name holds the input, as typed
         .orWhereStartsWith("email", prefix)
         .whereNotEndsWith("email", ".test", true)    // case-sensitive
-        .get();
-```
+        .get()
+    ```
 
 Each method takes `(column, value)` or `(column, value, caseSensitive)`. The flag defaults to
 `false`, as on `whereLike`. Each anchor has four forms: `whereContains`, `orWhereContains`,
@@ -118,27 +180,55 @@ nothing is escaped. Use it for patterns that you write yourself. Do not pass use
 `whereLike`, not even with `%` added around it. Use `whereContains`, `whereStartsWith` or
 `whereEndsWith` for that.
 
-```java
-query.table("users").whereLike("name", "A%");   // names that start with A, as written
-```
+=== "Java"
+
+    ```java
+    query.table("users").whereLike("name", "A%");   // names that start with A, as written
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    query.table("users").whereLike("name", "A%")   // names that start with A, as written
+    ```
 
 ## Joins, subqueries and unions
 
-```java
-List<Map<String, Object>> rows = query.table("orders")
+=== "Java"
+
+    ```java
+    List<Map<String, Object>> rows = query.table("orders")
+            .join("customers", "customers.id", "=", "orders.customer_id")
+            .leftJoinSub(query.table("payments").selectRaw("order_id, sum(amount) as paid")
+                    .groupBy("order_id"), "p", "p.order_id", "=", "orders.id")
+            .whereExists(q -> q.from("notes").whereColumn("notes.order_id", "orders.id"))
+            .select("orders.id", "customers.name", "p.paid")
+            .get();
+
+    List<Object> ids = query.table("orders").select("id").where("status", "open")
+            .union(query.table("archived_orders").select("id"))
+            .orderByDesc("id")
+            .limit(20)
+            .pluck("id");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val rows = query.table("orders")
         .join("customers", "customers.id", "=", "orders.customer_id")
         .leftJoinSub(query.table("payments").selectRaw("order_id, sum(amount) as paid")
-                .groupBy("order_id"), "p", "p.order_id", "=", "orders.id")
-        .whereExists(q -> q.from("notes").whereColumn("notes.order_id", "orders.id"))
+            .groupBy("order_id"), "p", "p.order_id", "=", "orders.id")
+        .whereExists { q -> q.from("notes").whereColumn("notes.order_id", "orders.id") }
         .select("orders.id", "customers.name", "p.paid")
-        .get();
+        .get()
 
-List<Object> ids = query.table("orders").select("id").where("status", "open")
+    val ids = query.table("orders").select("id").where("status", "open")
         .union(query.table("archived_orders").select("id"))
         .orderByDesc("id")
         .limit(20)
-        .pluck("id");
-```
+        .pluck("id")
+    ```
 
 A subquery is copied when you attach it, so changing it afterward does not change the outer query.
 A right join needs SQLite 3.39 or later, which Android 14 (API 34) and later ship. Older Android
@@ -146,21 +236,41 @@ SQLite reports its own error as a `QueryException`.
 
 ## Aggregates
 
-```java
-long total = query.table("orders").count();
-Number revenue = query.table("orders").sum("total");          // 0 when there are no rows
-Optional<Object> biggest = query.table("orders").max("total");
-Optional<Number> mean = query.table("orders").avg("total");
-```
+=== "Java"
+
+    ```java
+    long total = query.table("orders").count();
+    Number revenue = query.table("orders").sum("total");          // 0 when there are no rows
+    Optional<Object> biggest = query.table("orders").max("total");
+    Optional<Number> mean = query.table("orders").avg("total");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val total = query.table("orders").count()
+    val revenue = query.table("orders").sum("total")          // 0 when there are no rows
+    val biggest = query.table("orders").max("total")
+    val mean = query.table("orders").avg("total")
+    ```
 
 ### Exact decimal sums
 
 `sum` returns a `Number`. For money, use `sumDecimal`, which returns a `BigDecimal` at the scale you give:
 
-```java
-BigDecimal paid = query.table("payments").sumDecimal("amount", 2);                       // HALF_UP
-BigDecimal net = query.table("payments").sumDecimal("amount", 2, RoundingMode.HALF_EVEN);
-```
+=== "Java"
+
+    ```java
+    BigDecimal paid = query.table("payments").sumDecimal("amount", 2);                       // HALF_UP
+    BigDecimal net = query.table("payments").sumDecimal("amount", 2, RoundingMode.HALF_EVEN);
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val paid = query.table("payments").sumDecimal("amount", 2)                      // HALF_UP
+    val net = query.table("payments").sumDecimal("amount", 2, RoundingMode.HALF_EVEN)
+    ```
 
 - On PostgreSQL the sum is exact.
 - On SQLite `SUM` is a double that Diwan rounds back to the scale. That is fine for normal totals and approximate for very large ones (millions of large values).
@@ -169,22 +279,46 @@ BigDecimal net = query.table("payments").sumDecimal("amount", 2, RoundingMode.HA
 
 ## Insert, update and delete
 
-```java
-Object id = query.table("users").insertGetId(Map.of("email", "ada@example.com"));
-query.table("users").insert(List.of(Map.of("email", "a@x"), Map.of("email", "b@x")));
-query.table("users").where("id", id).update(Map.of("email", "ada@example.org"));
-query.table("posts").where("id", 3).increment("views");
-query.table("users").where("id", id).delete();
-query.table("archive").insertUsing(List.of("id", "total"),
-        q -> q.from("orders").select("id", "total").where("status", "closed"));
-```
+=== "Java"
+
+    ```java
+    Object id = query.table("users").insertGetId(Map.of("email", "ada@example.com"));
+    query.table("users").insert(List.of(Map.of("email", "a@x"), Map.of("email", "b@x")));
+    query.table("users").where("id", id).update(Map.of("email", "ada@example.org"));
+    query.table("posts").where("id", 3).increment("views");
+    query.table("users").where("id", id).delete();
+    query.table("archive").insertUsing(List.of("id", "total"),
+            q -> q.from("orders").select("id", "total").where("status", "closed"));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val id = query.table("users").insertGetId(mapOf("email" to "ada@example.com"))
+    query.table("users").insert(listOf(mapOf("email" to "a@x"), mapOf("email" to "b@x")))
+    query.table("users").where("id", id).update(mapOf("email" to "ada@example.org"))
+    query.table("posts").where("id", 3).increment("views")
+    query.table("users").where("id", id).delete()
+    query.table("archive").insertUsing(listOf("id", "total")) { q ->
+        q.from("orders").select("id", "total").where("status", "closed")
+    }
+    ```
 
 To empty several tables at once, call `truncate` on the factory:
 
-```java
-query.truncate(List.of("posts", "comments"));          // empty them, restart identities
-query.truncate(List.of("users"), true);                // cascade: also empty tables that refer to users
-```
+=== "Java"
+
+    ```java
+    query.truncate(List.of("posts", "comments"));          // empty them, restart identities
+    query.truncate(List.of("users"), true);                // cascade: also empty tables that refer to users
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    query.truncate(listOf("posts", "comments"))          // empty them, restart identities
+    query.truncate(listOf("users"), true)                // cascade: also empty tables that refer to users
+    ```
 
 An empty list runs nothing; a null or blank name throws. On PostgreSQL this is one `truncate ... restart identity` statement, and `cascade` is the native one. On SQLite and Android the rows are deleted with foreign key checks out of the way, and `cascade` is emulated: every table that refers to the listed ones, directly or through other tables, is emptied too, children first, as PostgreSQL does; the emulation follows only tables that carry the connection prefix. The matching `sqlite_sequence` rows are reset, and a database that has no `sqlite_sequence` table is handled. Truncating one table with the builder is unchanged.
 
@@ -193,14 +327,27 @@ table, not a subquery or raw `from`.
 
 ### insertOrIgnore, upsert and updateOrInsert
 
-```java
-query.table("users").insertOrIgnore(rows);                       // skips rows that break a unique key
-query.table("users").upsert(rows, List.of("email"));             // updates every column of the first row
-query.table("users").upsert(rows, List.of("email"), List.of("name"));
-query.table("users").upsert(rows, List.of("email"),
-        Map.of("votes", Expression.raw("users.votes + 1")));
-query.table("users").updateOrInsert(Map.of("email", "a@x"), Map.of("name", "A"));
-```
+=== "Java"
+
+    ```java
+    query.table("users").insertOrIgnore(rows);                       // skips rows that break a unique key
+    query.table("users").upsert(rows, List.of("email"));             // updates every column of the first row
+    query.table("users").upsert(rows, List.of("email"), List.of("name"));
+    query.table("users").upsert(rows, List.of("email"),
+            Map.of("votes", Expression.raw("users.votes + 1")));
+    query.table("users").updateOrInsert(Map.of("email", "a@x"), Map.of("name", "A"));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    query.table("users").insertOrIgnore(rows)                        // skips rows that break a unique key
+    query.table("users").upsert(rows, listOf("email"))              // updates every column of the first row
+    query.table("users").upsert(rows, listOf("email"), listOf("name"))
+    query.table("users").upsert(rows, listOf("email"),
+        mapOf("votes" to Expression.raw("users.votes + 1")))
+    query.table("users").updateOrInsert(mapOf("email" to "a@x"), mapOf("name" to "A"))
+    ```
 
 - `insertOrIgnore` returns the number of rows inserted. On SQLite it also skips a row that fails a
   `not null` or `check` constraint, not only a unique one.
@@ -219,14 +366,27 @@ query.table("users").updateOrInsert(Map.of("email", "a@x"), Map.of("name", "A"))
 
 ## Row locks
 
-```java
-connection.transaction(c -> {
-    var accounts = query.on(c).table("accounts").where("id", 1).lockForUpdate().get();
-    var jobs = query.on(c).table("jobs")
-            .lock(LockStrength.UPDATE, LockWait.SKIP_LOCKED).limit(10).get();
-    return null;
-});
-```
+=== "Java"
+
+    ```java
+    connection.transaction(c -> {
+        var accounts = query.on(c).table("accounts").where("id", 1).lockForUpdate().get();
+        var jobs = query.on(c).table("jobs")
+                .lock(LockStrength.UPDATE, LockWait.SKIP_LOCKED).limit(10).get();
+        return null;
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    connection.transaction { c ->
+        val accounts = query.on(c).table("accounts").where("id", 1).lockForUpdate().get()
+        val jobs = query.on(c).table("jobs")
+            .lock(LockStrength.UPDATE, LockWait.SKIP_LOCKED).limit(10).get()
+        null
+    }
+    ```
 
 `lockForUpdate()` and `sharedLock()` are shortcuts for `lock(LockStrength.UPDATE)` and
 `lock(LockStrength.SHARE)`. There is no raw string lock as in Laravel.
@@ -242,13 +402,25 @@ connection.transaction(c -> {
 
 ### Timed lock
 
-```java
-connection.transaction(c -> {
-    var row = query.on(c).table("accounts").where("id", 1)
-            .lock(LockStrength.UPDATE, Duration.ofSeconds(2)).first();
-    return row;
-});
-```
+=== "Java"
+
+    ```java
+    connection.transaction(c -> {
+        var row = query.on(c).table("accounts").where("id", 1)
+                .lock(LockStrength.UPDATE, Duration.ofSeconds(2)).first();
+        return row;
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    connection.transaction { c ->
+        val row = query.on(c).table("accounts").where("id", 1)
+            .lock(LockStrength.UPDATE, Duration.ofSeconds(2)).first()
+        row
+    }
+    ```
 
 `lock(strength, Duration)` waits at most that long for the row lock, then throws a `QueryException` with `isConcurrencyFailure()` true.
 
@@ -259,17 +431,33 @@ connection.transaction(c -> {
 
 ## Pagination
 
-```java
-LengthAwarePage page = query.table("orders").orderBy("id").paginate(20, 3);   // per page, page number
-long total = page.total();
-SimplePage simple = query.table("orders").orderBy("id").simplePaginate(20, 3);
-boolean more = simple.hasMorePages();
+=== "Java"
 
-CursorPage first = query.table("orders").orderByDesc("created_at").orderBy("id").cursorPaginate(20);
-String token = first.nextCursor().map(Cursor::encode).orElse(null);           // send to the client
-CursorPage next = query.table("orders").orderByDesc("created_at").orderBy("id")
-        .cursorPaginate(20, Cursor.decode(token));
-```
+    ```java
+    LengthAwarePage page = query.table("orders").orderBy("id").paginate(20, 3);   // per page, page number
+    long total = page.total();
+    SimplePage simple = query.table("orders").orderBy("id").simplePaginate(20, 3);
+    boolean more = simple.hasMorePages();
+
+    CursorPage first = query.table("orders").orderByDesc("created_at").orderBy("id").cursorPaginate(20);
+    String token = first.nextCursor().map(Cursor::encode).orElse(null);           // send to the client
+    CursorPage next = query.table("orders").orderByDesc("created_at").orderBy("id")
+            .cursorPaginate(20, Cursor.decode(token));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val page = query.table("orders").orderBy("id").paginate(20, 3)   // per page, page number
+    val total = page.total()
+    val simple = query.table("orders").orderBy("id").simplePaginate(20, 3)
+    val more = simple.hasMorePages()
+
+    val first = query.table("orders").orderByDesc("created_at").orderBy("id").cursorPaginate(20)
+    val token = first.nextCursor().map { it.encode() }.orElse(null)   // send to the client
+    val next = query.table("orders").orderByDesc("created_at").orderBy("id")
+        .cursorPaginate(20, Cursor.decode(token))
+    ```
 
 `cursorPaginate` needs an `orderBy` and should order by columns that are never null, since a null
 can make it skip rows. Cursor tokens are not signed. A forged token cannot inject SQL, but it can
@@ -277,37 +465,72 @@ ask for any rows the query already allows.
 
 When a sort column comes from a user, check it against a fixed list before it reaches the builder:
 
-```java
-private static final Set<String> SORTABLE = Set.of("created_at", "total", "id");
+=== "Java"
 
-String column = SORTABLE.contains(requested) ? requested : "id";
-query.table("orders").orderBy(column).orderBy("id").cursorPaginate(20);
-```
+    ```java
+    private static final Set<String> SORTABLE = Set.of("created_at", "total", "id");
+
+    String column = SORTABLE.contains(requested) ? requested : "id";
+    query.table("orders").orderBy(column).orderBy("id").cursorPaginate(20);
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val sortable = setOf("created_at", "total", "id")
+
+    val column = if (requested in sortable) requested else "id"
+    query.table("orders").orderBy(column).orderBy("id").cursorPaginate(20)
+    ```
 
 Column and direction names are quoted as identifiers, not bound as values, so an allowlist is your
 job.
 
 ## Reading large tables
 
-```java
-// Offset batches. Return false to stop. Needs an order.
-query.table("orders").orderBy("id").chunk(500, rows -> { rows.forEach(this::recalculate); return true; });
+=== "Java"
 
-// Key batches. Safe when rows change during the loop.
-query.table("orders").where("status", "open").chunkById(500, rows -> { /* ... */ return true; });
+    ```java
+    // Offset batches. Return false to stop. Needs an order.
+    query.table("orders").orderBy("id").chunk(500, rows -> { rows.forEach(this::recalculate); return true; });
 
-// One page per step, no connection held between pages.
-for (Map<String, Object> row : query.table("orders").orderBy("id").lazy(1000)) {
-    export(row);
-}
+    // Key batches. Safe when rows change during the loop.
+    query.table("orders").where("status", "open").chunkById(500, rows -> { /* ... */ return true; });
 
-// Streams rows from one open statement.
-try (QueryCursor<Map<String, Object>> rows = query.table("orders").orderBy("id").cursor()) {
-    for (Map<String, Object> row : rows) {
+    // One page per step, no connection held between pages.
+    for (Map<String, Object> row : query.table("orders").orderBy("id").lazy(1000)) {
         export(row);
     }
-}
-```
+
+    // Streams rows from one open statement.
+    try (QueryCursor<Map<String, Object>> rows = query.table("orders").orderBy("id").cursor()) {
+        for (Map<String, Object> row : rows) {
+            export(row);
+        }
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    // Offset batches. Return false to stop. Needs an order.
+    query.table("orders").orderBy("id").chunk(500) { rows -> rows.forEach { recalculate(it) }; true }
+
+    // Key batches. Safe when rows change during the loop.
+    query.table("orders").where("status", "open").chunkById(500) { rows -> /* ... */ true }
+
+    // One page per step, no connection held between pages.
+    for (row in query.table("orders").orderBy("id").lazy(1000)) {
+        export(row)
+    }
+
+    // Streams rows from one open statement.
+    query.table("orders").orderBy("id").cursor().use { rows ->
+        for (row in rows) {
+            export(row)
+        }
+    }
+    ```
 
 `chunk` pages by offset, so rows inserted or deleted during the loop can be skipped or read twice.
 Use `chunkById` or `lazyById` for a table that changes. On Android the cursor refills its window by
@@ -322,11 +545,21 @@ statement runs on the connection until the cursor closes.
 `iterator()` and `stream()` share one single use, and a second call throws
 `IllegalStateException`. Closing the stream closes the cursor, so keep it in try-with-resources:
 
-```java
-try (Stream<Map<String, Object>> rows = query.table("orders").orderBy("id").cursor().stream()) {
-    rows.limit(10).forEach(this::export);
-}
-```
+=== "Java"
+
+    ```java
+    try (Stream<Map<String, Object>> rows = query.table("orders").orderBy("id").cursor().stream()) {
+        rows.limit(10).forEach(this::export);
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    query.table("orders").orderBy("id").cursor().stream().use { rows ->
+        rows.limit(10).forEach { export(it) }
+    }
+    ```
 
 On Android a cursor works only on the thread that opened it.
 
@@ -335,10 +568,19 @@ On Android a cursor works only on the thread that opened it.
 `selectRaw`, `whereRaw`, `orderByRaw`, `groupByRaw`, `havingRaw`, `fromRaw` and `Expression.raw` write
 SQL exactly as you give it. Put values in the bindings list, never in the string.
 
-```java
-query.table("orders").whereRaw("total > ? and status = ?", List.of(100, status)).get();
-// Never: whereRaw("status = '" + status + "'")
-```
+=== "Java"
+
+    ```java
+    query.table("orders").whereRaw("total > ? and status = ?", List.of(100, status)).get();
+    // Never: whereRaw("status = '" + status + "'")
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    query.table("orders").whereRaw("total > ? and status = ?", listOf(100, status)).get()
+    // Never: whereRaw("status = '" + status + "'")
+    ```
 
 Build raw SQL from constants. The SQL text itself must never come from user input.
 

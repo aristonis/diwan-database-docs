@@ -36,16 +36,28 @@
 
 الفئات الفرعية تمتد من `QueryException`، فـ `catch` واحدة تشملها كلها. التقط النوع المحدد أولًا:
 
-```java
-try {
-    db.insert("insert into users (email) values (?)", email);
-} catch (UniqueConstraintViolationException e) {
-    return "That email is already registered.";
-} catch (QueryException e) {
-    LOG.warning("insert failed on " + e.getConnectionName() + ", state " + e.sqlState().orElse("unknown"));
-    throw e;
-}
-```
+=== "Java"
+    ```java
+    try {
+        db.insert("insert into users (email) values (?)", email);
+    } catch (UniqueConstraintViolationException e) {
+        return "That email is already registered.";
+    } catch (QueryException e) {
+        LOG.warning("insert failed on " + e.getConnectionName() + ", state " + e.sqlState().orElse("unknown"));
+        throw e;
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    try {
+        db.insert("insert into users (email) values (?)", email)
+    } catch (e: UniqueConstraintViolationException) {
+        return "That email is already registered."
+    } catch (e: QueryException) {
+        LOG.warning("insert failed on ${e.connectionName}, state ${e.sqlState().orElse("unknown")}")
+        throw e
+    }
+    ```
 
 المشغّل (driver) هو من يصنّف الفشل. والتصنيفات هي `DriverFailureKind.UNIQUE_VIOLATION` و`FOREIGN_KEY_VIOLATION` و`CHECK_VIOLATION` و`NOT_NULL_VIOLATION` و`CONCURRENCY` و`CANCELLED` و`CONNECTION_LOST` و`COMMIT_OUTCOME_UNKNOWN`. إذا فشل `COMMIT` بسبب انقطاع الاتصال فقد يكون التثبيت تمّ. افحص قاعدة البيانات قبل أن تعيد المحاولة أو تتراجع.
 
@@ -79,21 +91,35 @@ SQL: insert into users (email) values (?) (Connection: main, SQL state 23505, ve
 
 تعطي `DriverException.error()` الخطأ الموحّد للفشل: رمزًا ثابتًا، واسم القيد (constraint) أو الفهرس، والأعمدة المعنية. من `QueryException` تصل إلى استثناء المشغّل بـ `getCause()`:
 
-```java
-try {
-    db.insert("insert into users (email) values (?)", email);
-} catch (QueryException e) {
-    DiwanError error = ((DriverException) e.getCause()).error();
-    switch (error.code()) {
-        case "DWN-CST-0001":
-            return "That email is already registered.";
-        case "DWN-TXN-0001":
-            return "Please try again.";
-        default:
-            throw e;
+=== "Java"
+    ```java
+    try {
+        db.insert("insert into users (email) values (?)", email);
+    } catch (QueryException e) {
+        DiwanError error = ((DriverException) e.getCause()).error();
+        switch (error.code()) {
+            case "DWN-CST-0001":
+                return "That email is already registered.";
+            case "DWN-TXN-0001":
+                return "Please try again.";
+            default:
+                throw e;
+        }
     }
-}
-```
+    ```
+=== "Kotlin"
+    ```kotlin
+    try {
+        db.insert("insert into users (email) values (?)", email)
+    } catch (e: QueryException) {
+        val error = (e.cause as DriverException).error()
+        return when (error.code()) {
+            "DWN-CST-0001" -> "That email is already registered."
+            "DWN-TXN-0001" -> "Please try again."
+            else -> throw e
+        }
+    }
+    ```
 
 | الرمز | التصنيف | المعنى |
 |---|---|---|

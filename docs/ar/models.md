@@ -6,26 +6,54 @@
 
 تعيش النماذج في `diwan-database-eloquent`:
 
-```kotlin
-implementation("org.aristonis:diwan-database-eloquent:0.3.0")
-```
+=== "Gradle (Kotlin)"
+    ```kotlin
+    implementation("org.aristonis:diwan-database-eloquent:0.3.0")
+    ```
+=== "Gradle (Groovy)"
+    ```groovy
+    implementation 'org.aristonis:diwan-database-eloquent:0.3.0'
+    ```
+=== "Maven"
+    ```xml
+    <dependency>
+        <groupId>org.aristonis</groupId>
+        <artifactId>diwan-database-eloquent</artifactId>
+        <version>0.3.0</version>
+    </dependency>
+    ```
 
 ## تعريف نموذج
 
 يحتاج النموذج إلى مدخل `static` واحد. لا يستعمل reflection (الانعكاس في Java) ولا annotations ولا build plugin، ولذلك يعمل الصنف نفسه على Android.
 
-```java
-public final class User extends Model {
-    public static final ModelQuery<User> query = ModelQuery.of(User.class, User::new);
+=== "Java"
+    ```java
+    public final class User extends Model {
+        public static final ModelQuery<User> query = ModelQuery.of(User.class, User::new);
 
-    @Override
-    protected List<String> fillable() {
-        return List.of("name", "email");   // nothing is mass assignable until listed
+        @Override
+        protected List<String> fillable() {
+            return List.of("name", "email");   // nothing is mass assignable until listed
+        }
     }
-}
 
-ModelQuery<User> users = User.query.on(manager.query());
-```
+    ModelQuery<User> users = User.query.on(manager.query());
+    ```
+=== "Kotlin"
+    ```kotlin
+    class User : Model() {
+        override fun fillable(): List<String> {
+            return listOf("name", "email")   // nothing is mass assignable until listed
+        }
+
+        companion object {
+            val query: ModelQuery<User> = ModelQuery.of(User::class.java, ::User)
+        }
+    }
+
+    val users: ModelQuery<User> = User.query.on(manager.query())
+    ```
 
 تربط `on(...)` المدخل بـ query factory (مصنع الاستعلامات)، وعادةً `manager.query()`، فلا يذكر النموذج أي صنف driver. داخل transaction (معاملة) اربط النموذج عبر `User.query.on(db.on(tx))`
 حتى تعمل كل العبارات على المعاملة.
@@ -52,42 +80,78 @@ ModelQuery<User> users = User.query.on(manager.query());
 تضبط `fill` المفاتيح الموجودة في `fillable()` فقط وتتجاهل الباقي. مع الحماية الافتراضية (`guarded()` تساوي `*` و`fillable()` فارغة)
 ترمي `fill` الاستثناء `MassAssignmentException`. أمّا `forceFill` و`Model.unguarded(...)` فتتجاوزان الحماية.
 
-```java
-User user = users.make(request);   // fills; "is_admin" in request is dropped
-user.save();
-```
+=== "Java"
+    ```java
+    User user = users.make(request);   // fills; "is_admin" in request is dropped
+    user.save();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val user = users.make(request)   // fills; "is_admin" in request is dropped
+    user.save()
+    ```
 
 ## الخصائص والـ accessors والـ casts
 
-```java
-found.setAttribute("name", "Ada L.");
-found.isDirty("name");      // true
-found.getDirty();           // {name=Ada L.}
-found.save();               // writes name and updated_at only
-found.save();               // clean: runs nothing
-```
+=== "Java"
+    ```java
+    found.setAttribute("name", "Ada L.");
+    found.isDirty("name");      // true
+    found.getDirty();           // {name=Ada L.}
+    found.save();               // writes name and updated_at only
+    found.save();               // clean: runs nothing
+    ```
+=== "Kotlin"
+    ```kotlin
+    found.setAttribute("name", "Ada L.")
+    found.isDirty("name")      // true
+    found.dirty                // {name=Ada L.}
+    found.save()               // writes name and updated_at only
+    found.save()               // clean: runs nothing
+    ```
 
 صرّح بالـ casts (تحويل نوع القيمة المخزَّنة) في `casts()` بصيغة Laravel النصية أو بالدوال الجاهزة في `Casts`:
 
-```java
-@Override
-protected Map<String, Cast<?>> casts() {
-    return CastMap.create()
+=== "Java"
+    ```java
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create()
+                .put("price", "decimal:2")                      // BigDecimal, scale 2
+                .put("is_admin", "bool")                        // Boolean
+                .put("options", "json")                         // Map or List
+                .put("born_on", "date")                         // LocalDate
+                .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
+                .put("status", Casts.enumOf(Status.class))      // the enum constant
+                .build();
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create()
             .put("price", "decimal:2")                      // BigDecimal, scale 2
             .put("is_admin", "bool")                        // Boolean
             .put("options", "json")                         // Map or List
             .put("born_on", "date")                         // LocalDate
             .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
-            .put("status", Casts.enumOf(Status.class))      // the enum constant
-            .build();
-}
-```
+            .put("status", Casts.enumOf(Status::class.java))      // the enum constant
+            .build()
+    }
+    ```
 
-```java
-Order order = orders.findOrFail(1);
-BigDecimal price = (BigDecimal) order.getAttribute("price");
-order.getAttributes().get("price");   // the stored form, "12.50"
-```
+=== "Java"
+    ```java
+    Order order = orders.findOrFail(1);
+    BigDecimal price = (BigDecimal) order.getAttribute("price");
+    order.getAttributes().get("price");   // the stored form, "12.50"
+    ```
+=== "Kotlin"
+    ```kotlin
+    val order = orders.findOrFail(1)
+    val price = order.getAttribute("price") as BigDecimal
+    order.attributes["price"]   // the stored form, "12.50"
+    ```
 
 البيانات المخزَّنة التالفة، مثل JSON مكسور أو `"abc"` تحت `int`، ترمي `InvalidCastException`. أمّا Laravel فتقرأ `null` أو `0` هنا.
 يقارن فحص التغيّر (dirty check) بالمعنى: JSON بالبنية، واللحظات كـ instants، والتواريخ كتواريخ. قراءة قيمة cast (تحويل نوع قيمة الـ attribute عند القراءة والكتابة) لا تجعل النموذج dirty أبدًا،
@@ -98,27 +162,46 @@ order.getAttributes().get("price");   // the stored form, "12.50"
 
 يخزّن `Casts.instant()` قيمة `Instant` مهما كان `timestampFormat()` في النموذج. استعمله لأعمدة `Blueprint.instant`. والأعمدة `created_at` و`updated_at` و`deleted_at` تكتبها مباشرةً عمليات soft delete والتحديث الجماعي و`touch`، وبصيغة النموذج دائمًا. لذلك إذا كانت هذه الأعمدة من نوع `instant` فالنموذج يحتاج `TimestampFormat.INSTANT`. أما نموذج بصيغة TEXT يضع cast الـ instant على أحدها فيفشل عند أول استعمال، والرسالة تسمّي العمود.
 
-```java
-@Override
-protected TimestampFormat timestampFormat() { return TimestampFormat.INSTANT; }
+=== "Java"
+    ```java
+    @Override
+    protected TimestampFormat timestampFormat() { return TimestampFormat.INSTANT; }
 
-@Override
-protected Map<String, Cast<?>> casts() {
-    return CastMap.create().put("sent_at", Casts.instant()).build();   // any other instant column
-}
-```
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create().put("sent_at", Casts.instant()).build();   // any other instant column
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun timestampFormat(): TimestampFormat = TimestampFormat.INSTANT
+
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create().put("sent_at", Casts.instant()).build()   // any other instant column
+    }
+    ```
 
 الـ accessors والـ mutators (دوال القراءة والكتابة المخصّصة للخاصية) تُسجَّل في `accessors()` ولا تُكتشف بالاسم:
 
-```java
-@Override
-protected Map<String, Attribute<?>> accessors() {
-    Map<String, Attribute<?>> map = new LinkedHashMap<>();
-    map.put("display_name", Attribute.get((model, value, attrs) -> attrs.get("first") + " " + attrs.get("last")));
-    map.put("email", Attribute.set((model, value, attrs) -> value.toString().toLowerCase(Locale.ROOT)));
-    return map;
-}
-```
+=== "Java"
+    ```java
+    @Override
+    protected Map<String, Attribute<?>> accessors() {
+        Map<String, Attribute<?>> map = new LinkedHashMap<>();
+        map.put("display_name", Attribute.get((model, value, attrs) -> attrs.get("first") + " " + attrs.get("last")));
+        map.put("email", Attribute.set((model, value, attrs) -> value.toString().toLowerCase(Locale.ROOT)));
+        return map;
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun accessors(): Map<String, Attribute<*>> {
+        val map = LinkedHashMap<String, Attribute<*>>()
+        map["display_name"] = Attribute.get<Any> { model, value, attrs -> "${attrs["first"]} ${attrs["last"]}" }
+        map["email"] = Attribute.set<Any> { model, value, attrs -> value.toString().lowercase(Locale.ROOT) }
+        return map
+    }
+    ```
 
 تُقرأ `casts()` و`accessors()` مرة واحدة لكل صنف، فلا يجوز أن تعتمدا على حالة النسخة.
 
@@ -126,16 +209,27 @@ protected Map<String, Attribute<?>> accessors() {
 
 يقرأ `decimal:2` ويكتب أي رقم بخانتين عشريتين ويقرّب الخانات الزائدة half up، كما يفعل Laravel. للمال، صرّح بالعمود بنفس أرقام الـ migration الخاصة به، فيفحص الـ cast ما يتّسع له العمود:
 
-```java
-// migration: table.decimal("total", 6, 2)   -- 6 digits in all, 2 after the point
-@Override
-protected Map<String, Cast<?>> casts() {
-    return CastMap.create()
+=== "Java"
+    ```java
+    // migration: table.decimal("total", 6, 2)   -- 6 digits in all, 2 after the point
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create()
+                .put("total", Casts.decimal(6, 2))                          // decimal:6,2
+                .put("tax", Casts.decimal(6, 2, RoundingMode.HALF_EVEN))    // decimal:6,2,HALF_EVEN
+                .build();
+    }
+    ```
+=== "Kotlin"
+    ```kotlin
+    // migration: table.decimal("total", 6, 2)   -- 6 digits in all, 2 after the point
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create()
             .put("total", Casts.decimal(6, 2))                          // decimal:6,2
             .put("tax", Casts.decimal(6, 2, RoundingMode.HALF_EVEN))    // decimal:6,2,HALF_EVEN
-            .build();
-}
-```
+            .build()
+    }
+    ```
 
 وتعمل نصوص المواصفة (spec) أيضًا: `decimal:6,2` و`decimal:6,2,HALF_EVEN` (اسم الوضع بأي حالة أحرف). الرقم الأول هو إجمالي الخانات والثاني عدد الخانات بعد الفاصلة. يجب أن يحقق كلاهما `0 <= scale <= precision`، والتصريح الخاطئ يرمي `IllegalArgumentException`.
 
@@ -163,55 +257,94 @@ protected Map<String, Cast<?>> casts() {
 
 هذا تغيير في السلوك لمن يرقّي: قيمة كانت تُقبل سابقًا وفيها أكثر من 15 رقمًا ترمي الآن. وللاحتفاظ بقيم أطول دقيقة على SQLite استعمل عمود نص مع `Casts.decimalText(precision, scale)`، وهو يحتفظ بقواعد الدقة والمنازل الصارمة لكنه يتخطى حد الخمسة عشر رقمًا:
 
-```java
-// migration: table.string("rate")   -- text column, exact digits
-.put("rate", Casts.decimalText(30, 15))
-```
+=== "Java"
+    ```java
+    // migration: table.string("rate")   -- text column, exact digits
+    .put("rate", Casts.decimalText(30, 15))
+    ```
+=== "Kotlin"
+    ```kotlin
+    // migration: table.string("rate")   -- text column, exact digits
+    .put("rate", Casts.decimalText(30, 15))
+    ```
 
 `Casts.decimal(scale)` (`decimal:2`) لم تتغيّر: لا حدّ لها على الـ precision وتقرّب half up. استعمل الصيغة الصارمة للمال، ليتّسع العمود دائمًا للقيمة المخزّنة.
 
 ## الحفظ والإنشاء والبحث
 
-```java
-User ada = users.create(Map.of("name", "Ada", "email", "ada@example.com"));  // id, timestamps set
-User found = users.findOrFail(ada.getKey());
-Optional<User> maybe = users.find(42);
-Optional<User> first = users.query().where("email", "ada@example.com").first();
+=== "Java"
+    ```java
+    User ada = users.create(Map.of("name", "Ada", "email", "ada@example.com"));  // id, timestamps set
+    User found = users.findOrFail(ada.getKey());
+    Optional<User> maybe = users.find(42);
+    Optional<User> first = users.query().where("email", "ada@example.com").first();
 
-found.update(Map.of("name", "Ada Lovelace"));
-found.increment("logins");
-found.delete();            // false when the model is not in the database
-```
+    found.update(Map.of("name", "Ada Lovelace"));
+    found.increment("logins");
+    found.delete();            // false when the model is not in the database
+    ```
+=== "Kotlin"
+    ```kotlin
+    val ada = users.create(mapOf("name" to "Ada", "email" to "ada@example.com"))  // id, timestamps set
+    val found = users.findOrFail(ada.key)
+    val maybe: Optional<User> = users.find(42)
+    val first: Optional<User> = users.query().where("email", "ada@example.com").first()
+
+    found.update(mapOf("name" to "Ada Lovelace"))
+    found.increment("logins")
+    found.delete()            // false when the model is not in the database
+    ```
 
 تحفظ `saveOrFail()` وتنفّذ touches الخاصة بها داخل transaction واحدة. وترمي `IllegalStateException` حين يكون لنموذج مفتاحه غير تلقائي
 الزيادة لا شيء ليُدرَج. أمّا `save()` العادية فتعيد `true` هناك، كما في Laravel.
 
 البحث عن صف أو إنشاؤه:
 
-```java
-User sam = users.firstOrCreate(Map.of("email", "sam@example.com"), Map.of("name", "Sam"));
-users.updateOrCreate(Map.of("email", "sam@example.com"), Map.of("name", "Samuel"));
-users.firstOrNew(Map.of("email", "new@example.com"), Map.of("name", "New"));   // not saved
-```
+=== "Java"
+    ```java
+    User sam = users.firstOrCreate(Map.of("email", "sam@example.com"), Map.of("name", "Sam"));
+    users.updateOrCreate(Map.of("email", "sam@example.com"), Map.of("name", "Samuel"));
+    users.firstOrNew(Map.of("email", "new@example.com"), Map.of("name", "New"));   // not saved
+    ```
+=== "Kotlin"
+    ```kotlin
+    val sam = users.firstOrCreate(mapOf("email" to "sam@example.com"), mapOf("name" to "Sam"))
+    users.updateOrCreate(mapOf("email" to "sam@example.com"), mapOf("name" to "Samuel"))
+    users.firstOrNew(mapOf("email" to "new@example.com"), mapOf("name" to "New"))   // not saved
+    ```
 
 تكتب `upsert` و`insertOrIgnore` صفوفًا كثيرة بعبارة واحدة. لا تُطلقان أحداث النموذج ولا تطبّقان الـ casts،
 لكنهما تملآن المعرّفات الفريدة والـ timestamps:
 
-```java
-users.query().upsert(rows, List.of("email"));          // needs a unique index on email
-users.query().upsert(rows, List.of("email"), List.of("name"));
-users.query().insertOrIgnore(rows);
-```
+=== "Java"
+    ```java
+    users.query().upsert(rows, List.of("email"));          // needs a unique index on email
+    users.query().upsert(rows, List.of("email"), List.of("name"));
+    users.query().insertOrIgnore(rows);
+    ```
+=== "Kotlin"
+    ```kotlin
+    users.query().upsert(rows, listOf("email"))          // needs a unique index on email
+    users.query().upsert(rows, listOf("email"), listOf("name"))
+    users.query().insertOrIgnore(rows)
+    ```
 
 تحتاج `upsert` إلى SQLite 3.24 أو أحدث، أي Android API 30 أو أحدث. انظر [Android](android.md).
 
 تملأ `fillAndInsert` و`fillAndInsertOrIgnore` و`fillAndInsertGetId` كل صف كما تفعل `fill`، ثم تدرجه. تُستدعى على `EloquentBuilder` الذي تعيده `query()`، لا على `ModelQuery`:
 
-```java
-Member.query.on(db).query().fillAndInsert(rows);
-int added = Member.query.on(db).query().fillAndInsertOrIgnore(rows);
-Object id = Member.query.on(db).query().fillAndInsertGetId(row);
-```
+=== "Java"
+    ```java
+    Member.query.on(db).query().fillAndInsert(rows);
+    int added = Member.query.on(db).query().fillAndInsertOrIgnore(rows);
+    Object id = Member.query.on(db).query().fillAndInsertGetId(row);
+    ```
+=== "Kotlin"
+    ```kotlin
+    Member.query.on(db).query().fillAndInsert(rows)
+    val added = Member.query.on(db).query().fillAndInsertOrIgnore(rows)
+    val id = Member.query.on(db).query().fillAndInsertGetId(row)
+    ```
 
 الملء هنا يتجاوز حماية `fillable`، فلا تمرّر بيانات الطلب إلى هذه الدوال دون فحص. تُطبَّق الـ casts، وتُضبط المعرّفات الفريدة والـ timestamps، وتبقى قيمة `created_at` أو `updated_at` الموجودة في الصف كما هي. تعمل `beforeWrite()` على كل صف، لكن لا يُطلق أي حدث نموذج. وصيغ القوائم تكتب كل الصفوف بعبارة واحدة، فيجب أن تحمل الصفوف كلها الأعمدة نفسها، وأن تبقى الدفعة الكبيرة تحت حد الربط (999 على SQLite قبل 3.32).
 
@@ -219,39 +352,66 @@ Object id = Member.query.on(db).query().fillAndInsertGetId(row);
 
 تصفّي `whereBelongsTo` أبناء أب عبر علاقة `belongsTo` التي يعلنها الابن. من دون اسم تستعمل اسم صنف الأب بصيغة camel case، فيكون `user` للصنف `User`. مع R8 أو أي إعادة تسمية أخرى، مرّر اسم العلاقة:
 
-```java
-ModelQuery<Post> posts = Post.query.on(db);
-posts.query().whereBelongsTo(ada).get();                          // relation "user"
-posts.query().whereBelongsTo(ada, "author").get();
-posts.query().whereBelongsTo(List.of(ada, sam), "author").get();  // one in clause
-posts.query().where("pinned", true).orWhereBelongsTo(ada, "author").get();
-```
+=== "Java"
+    ```java
+    ModelQuery<Post> posts = Post.query.on(db);
+    posts.query().whereBelongsTo(ada).get();                          // relation "user"
+    posts.query().whereBelongsTo(ada, "author").get();
+    posts.query().whereBelongsTo(List.of(ada, sam), "author").get();  // one in clause
+    posts.query().where("pinned", true).orWhereBelongsTo(ada, "author").get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    val posts = Post.query.on(db)
+    posts.query().whereBelongsTo(ada).get()                          // relation "user"
+    posts.query().whereBelongsTo(ada, "author").get()
+    posts.query().whereBelongsTo(listOf(ada, sam), "author").get()  // one in clause
+    posts.query().where("pinned", true).orWhereBelongsTo(ada, "author").get()
+    ```
 
 ترفض هاتان الدالتان مجموعة فارغة، وأبًا من صنف خاطئ، وأبًا بلا قيمة مفتاح.
 
 تعيد `pluck(column, key)` خريطة من عمود المفتاح إلى العمود، بالقيم الخام كما تعطيها `pluck(column)`:
 
-```java
-Map<Object, Object> ids = Member.query.on(db).query().pluck("id", "code");   // code -> id
-```
+=== "Java"
+    ```java
+    Map<Object, Object> ids = Member.query.on(db).query().pluck("id", "code");   // code -> id
+    ```
+=== "Kotlin"
+    ```kotlin
+    val ids = Member.query.on(db).query().pluck("id", "code")   // code -> id
+    ```
 
 ## النطاقات (Scopes)
 
 يضيف global scope (نطاق عام) قيدًا إلى كل استعلام للنموذج، بما فيه eager loads و`whereHas`. سجّله مرة واحدة عند بدء التشغيل، باسم:
 
-```java
-posts.addGlobalScope("tenant", q -> q.where("tenant_id", 7));
+=== "Java"
+    ```java
+    posts.addGlobalScope("tenant", q -> q.where("tenant_id", 7));
 
-posts.query().withoutGlobalScope("tenant").get();   // one query without it
-posts.query().withoutGlobalScopes().get();
-```
+    posts.query().withoutGlobalScope("tenant").get();   // one query without it
+    posts.query().withoutGlobalScopes().get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    posts.addGlobalScope("tenant", Consumer<EloquentBuilder<*>> { q -> q.where("tenant_id", 7) })
+
+    posts.query().withoutGlobalScope("tenant").get()   // one query without it
+    posts.query().withoutGlobalScopes().get()
+    ```
 
 يجوز للـ scope أن يضيف شروط استعلام فقط. ويجب أن يكون بلا حالة وألّا ينفّذ استعلامًا بنفسه. الصنف الذي ينفّذ `Scope` يُسجَّل عبر
 `addGlobalScope(Scope)`، أمّا الـ lambda (دالة مجهولة مختصرة) فتحتاج اسمًا. والـ local scope خطوة قابلة لإعادة الاستعمال تطبّقها على استعلام واحد:
 
-```java
-posts.query().scope(q -> q.where("published", true)).get();
-```
+=== "Java"
+    ```java
+    posts.query().scope(q -> q.where("published", true)).get();
+    ```
+=== "Kotlin"
+    ```kotlin
+    posts.query().scope { q -> q.where("published", true) }.get()
+    ```
 
 ## الحذف الناعم (Soft deletes)
 
@@ -273,18 +433,32 @@ posts.query().scope(q -> q.where("published", true)).get();
 
 سجّل الـ listeners (المستمعين) مرة واحدة عند بدء التشغيل على `ModelQuery` الخاص بالنموذج:
 
-```java
-posts.events()
-        .saving(post -> {                       // return false to stop the save
-            if (post.getString("slug") == null) {
-                post.setAttribute("slug", slugOf(post.getString("title")));
-            }
-            return true;
-        })
-        .created(post -> auditLog.record("post created", post.getKey()));
+=== "Java"
+    ```java
+    posts.events()
+            .saving(post -> {                       // return false to stop the save
+                if (post.getString("slug") == null) {
+                    post.setAttribute("slug", slugOf(post.getString("title")));
+                }
+                return true;
+            })
+            .created(post -> auditLog.record("post created", post.getKey()));
 
-posts.events().observe(new PostObserver());     // a ModelObserver<Post>
-```
+    posts.events().observe(new PostObserver());     // a ModelObserver<Post>
+    ```
+=== "Kotlin"
+    ```kotlin
+    posts.events()
+        .saving { post ->                       // return false to stop the save
+            if (post.getString("slug") == null) {
+                post.setAttribute("slug", slugOf(post.getString("title")))
+            }
+            true
+        }
+        .created { post -> auditLog.record("post created", post.key) }
+
+    posts.events().observe(PostObserver())     // a ModelObserver<Post>
+    ```
 
 الأحداث هي `retrieved` و`saving` و`saved` و`creating` و`created` و`updating` و`updated` و`deleting` و`deleted` و`softDeleted`
 و`restoring` و`restored` و`forceDeleting` و`forceDeleted` و`replicating`. الستة التي تعمل قبل الكتابة تستطيع إيقافها بإرجاع `false`.
@@ -299,31 +473,54 @@ posts.events().observe(new PostObserver());     // a ModelObserver<Post>
 تطبّق `toMap()` و`toJson()` الدالة `visible()` ثم `hidden()` ثم `appends()`. تخرج اللحظات بصيغة ISO-8601 UTC بدقة الميكروثانية.
 وتأتي العلاقات المحمّلة بعد الخصائص، وتنتهي الدورة (cycle) عند تكرارها.
 
-```java
-@Override
-protected List<String> hidden() { return List.of("password"); }
+=== "Java"
+    ```java
+    @Override
+    protected List<String> hidden() { return List.of("password"); }
 
-String json = user.toJson();
-```
+    String json = user.toJson();
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun hidden(): List<String> = listOf("password")
+
+    val json = user.toJson()
+    ```
 
 الـ codec (مُرمِّز JSON) المدمج صارم وفق RFC 8259، والمكتبة لا تضيف أي اعتماد JSON. لاستعمال Jackson أو Gson نفّذ `JsonCodec` وأعده من `jsonCodec()`.
 
 ## الـ chunks والقراءة الكسولة والـ cursors والصفحات
 
-```java
-users.query().orderBy("id").chunk(500, batch -> { batch.forEach(this::sync); return true; });
-users.query().chunkById(500, batch -> { /* rows may change here */ return true; });
+=== "Java"
+    ```java
+    users.query().orderBy("id").chunk(500, batch -> { batch.forEach(this::sync); return true; });
+    users.query().chunkById(500, batch -> { /* rows may change here */ return true; });
 
-for (User u : users.query().orderBy("id").lazy(1000)) { /* one page at a time */ }
+    for (User u : users.query().orderBy("id").lazy(1000)) { /* one page at a time */ }
 
-try (QueryCursor<User> cursor = users.query().orderBy("id").cursor()) {
-    for (User u : cursor) { /* streams one row at a time */ }
-}
+    try (QueryCursor<User> cursor = users.query().orderBy("id").cursor()) {
+        for (User u : cursor) { /* streams one row at a time */ }
+    }
 
-ModelPage<User> page = users.query().orderBy("name").paginate(20, 2);
-page.items();   // ModelCollection<User>
-page.total();
-```
+    ModelPage<User> page = users.query().orderBy("name").paginate(20, 2);
+    page.items();   // ModelCollection<User>
+    page.total();
+    ```
+=== "Kotlin"
+    ```kotlin
+    users.query().orderBy("id").chunk(500) { batch -> batch.forEach { sync(it) }; true }
+    users.query().chunkById(500) { batch -> /* rows may change here */ true }
+
+    for (u in users.query().orderBy("id").lazy(1000)) { /* one page at a time */ }
+
+    users.query().orderBy("id").cursor().use { cursor ->
+        for (u in cursor) { /* streams one row at a time */ }
+    }
+
+    val page = users.query().orderBy("name").paginate(20, 2)
+    page.items()   // ModelCollection<User>
+    page.total()
+    ```
 
 تقسّم `chunk` الصفوف بالإزاحة (offset)، فاستعمل `chunkById` حين تتغيّر الصفوف أثناء الحلقة. أغلق `cursor()` دائمًا: المفتوح يحتفظ باتصاله.
 يرفض الـ cursor (مؤشر يقرأ الصفوف واحدًا واحدًا) الـ eager loads؛ أمّا `lazy()` فتحمّلها لكل صفحة. و`simplePaginate` و`cursorPaginate` تعملان كما في query builder (باني الاستعلامات).

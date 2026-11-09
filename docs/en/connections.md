@@ -21,25 +21,45 @@ database.connections.cache.driver=sqlite
 database.connections.cache.database=/var/lib/shop/cache.db
 ```
 
-```java
-ConfigSource source = LayeredConfigSource.of(
+=== "Java"
+
+    ```java
+    ConfigSource source = LayeredConfigSource.of(
+            EnvConfigSource.system(),                         // wins over the file
+            PropertiesConfigSource.of(Path.of("database.properties")));
+
+    DatabaseManager db = DatabaseManager.builder()
+            .config(DatabaseConfig.from(source))
+            .connector(new PostgresConnector(), new SQLiteConnector())
+            .build();
+
+    QueryFactory shop = db.query();          // default connection
+    Schema cache = db.schema("cache");       // built on first use
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val source = LayeredConfigSource.of(
         EnvConfigSource.system(),                         // wins over the file
-        PropertiesConfigSource.of(Path.of("database.properties")));
+        PropertiesConfigSource.of(Path.of("database.properties")))
 
-DatabaseManager db = DatabaseManager.builder()
+    val db = DatabaseManager.builder()
         .config(DatabaseConfig.from(source))
-        .connector(new PostgresConnector(), new SQLiteConnector())
-        .build();
+        .connector(PostgresConnector(), SQLiteConnector())
+        .build()
 
-QueryFactory shop = db.query();          // default connection
-Schema cache = db.schema("cache");       // built on first use
-```
+    val shop = db.query()          // default connection
+    val cache = db.schema("cache") // built on first use
+    ```
 
 Other accessors: `connection(name)`, `migrator(name)` (a `Migrator.Builder`), `usingConnection(name, work)`, `getConnections()`, `hasConnection(name)`, `setDefaultConnection(name)`. An unknown name or a driver with no connector throws `IllegalArgumentException` that lists the known names.
 
 ### Configuration keys
 
 All keys start with `database.`. A connection is `database.connections.<name>.<key>`.
+
+All keys: [Configuration](configuration.md)
 
 | Key | Meaning |
 |---|---|
@@ -84,17 +104,33 @@ mode, `immediate` and `exclusive` behave alike. Android already queues writers i
 
 On Android, build the configuration in code:
 
-```java
-DatabaseConfig config = DatabaseConfig.builder()
+=== "Java"
+
+    ```java
+    DatabaseConfig config = DatabaseConfig.builder()
+            .defaultConnection("app")
+            .connection(ConnectionConfig.builder("app").driver("android").build())
+            .build();
+
+    DatabaseManager db = DatabaseManager.builder()
+            .config(config)
+            .connector(AndroidConnector.of(() -> helper, SQLiteQuery::of, SQLiteSchema::of))
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val config = DatabaseConfig.builder()
         .defaultConnection("app")
         .connection(ConnectionConfig.builder("app").driver("android").build())
-        .build();
+        .build()
 
-DatabaseManager db = DatabaseManager.builder()
+    val db = DatabaseManager.builder()
         .config(config)
-        .connector(AndroidConnector.of(() -> helper, SQLiteQuery::of, SQLiteSchema::of))
-        .build();
-```
+        .connector(AndroidConnector.of({ helper }, SQLiteQuery::of, SQLiteSchema::of))
+        .build()
+    ```
 
 ### Lock wait
 
@@ -134,12 +170,23 @@ option, this configuration key, the database default.
 
 ## Without a manager
 
-```java
-Connection db = Connection.builder()
+=== "Java"
+
+    ```java
+    Connection db = Connection.builder()
+            .name("main")
+            .dataSource(dataSource)        // any javax.sql.DataSource, pooled or not
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val db = Connection.builder()
         .name("main")
         .dataSource(dataSource)        // any javax.sql.DataSource, pooled or not
-        .build();
-```
+        .build()
+    ```
 
 | Builder method | Effect |
 |---|---|
@@ -168,61 +215,121 @@ To get the factories from a `Connection` you built yourself, use the grammar mod
 
 ## Transactions
 
-```java
-int removed = db.transaction(tx -> {
-    tx.update("update users set email = ? where id = ?", "ada@example.org", 1);
-    return tx.delete("delete from users where email like ?", "%@spam.test");
-});
-```
+=== "Java"
+
+    ```java
+    int removed = db.transaction(tx -> {
+        tx.update("update users set email = ? where id = ?", "ada@example.org", 1);
+        return tx.delete("delete from users where email like ?", "%@spam.test");
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val removed = db.transaction { tx ->
+        tx.update("update users set email = ? where id = ?", "ada@example.org", 1)
+        tx.delete("delete from users where email like ?", "%@spam.test")
+    }
+    ```
 
 The transaction commits when the callback returns and rolls back when it throws. Use the connection you were handed (`tx`) for everything inside. Inside a transaction, call `db.on(tx)` so the work runs on the transaction.
 
 With try-with-resources, a scope that rolls back on close unless `commit()` ran:
 
-```java
-try (TransactionScope tx = db.beginTransaction()) {
-    tx.insert("insert into users (email) values (?)", "grace@example.com");
-    tx.commit();
-}
-```
+=== "Java"
+
+    ```java
+    try (TransactionScope tx = db.beginTransaction()) {
+        tx.insert("insert into users (email) values (?)", "grace@example.com");
+        tx.commit();
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.beginTransaction().use { tx ->
+        tx.insert("insert into users (email) values (?)", "grace@example.com")
+        tx.commit()
+    }
+    ```
 
 ### Savepoints
 
 A transaction inside a transaction uses a savepoint. If the inner callback throws and the outer one catches it, only the inner work is undone:
 
-```java
-db.transaction(outer -> {
-    outer.insert("insert into logs (msg) values (?)", "start");
-    try {
-        outer.transaction(inner -> inner.insert("insert into logs (msg) values (?)", "risky"));
-    } catch (RuntimeException ignored) {
-        // "risky" is undone, "start" survives
+=== "Java"
+
+    ```java
+    db.transaction(outer -> {
+        outer.insert("insert into logs (msg) values (?)", "start");
+        try {
+            outer.transaction(inner -> inner.insert("insert into logs (msg) values (?)", "risky"));
+        } catch (RuntimeException ignored) {
+            // "risky" is undone, "start" survives
+        }
+        return null;
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { outer ->
+        outer.insert("insert into logs (msg) values (?)", "start")
+        try {
+            outer.transaction { inner -> inner.insert("insert into logs (msg) values (?)", "risky") }
+        } catch (ignored: RuntimeException) {
+            // "risky" is undone, "start" survives
+        }
+        null
     }
-    return null;
-});
-```
+    ```
 
 `transactionLevel()` returns 0 outside a transaction and 1 for the outermost one. Inside a transaction a container owns (Spring), the outermost Diwan level is a savepoint, and the container keeps commit and rollback.
 
 ### Attempts
 
-```java
-db.transaction(tx -> transfer(tx), 3);
-```
+=== "Java"
+
+    ```java
+    db.transaction(tx -> transfer(tx), 3);
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction({ tx -> transfer(tx) }, 3)
+    ```
 
 On a deadlock or serialization failure, the whole callback runs again, up to 3 times. Outside effects in the callback, such as an HTTP call, run again too. A failed `COMMIT` is never retried, because it may have landed. Only the outermost transaction retries; a nested one rethrows at once. `attempts` below 1 throws `IllegalArgumentException`.
 
 ### Lock wait per transaction
 
-```java
-import java.time.Duration;
-import org.aristonis.diwan.database.TransactionOptions;
+=== "Java"
 
-db.transaction(tx -> transfer(tx), TransactionOptions.lockWait(Duration.ofSeconds(2)));
+    ```java
+    import java.time.Duration;
+    import org.aristonis.diwan.database.TransactionOptions;
 
-db.transaction(tx -> transfer(tx),
-        TransactionOptions.lockWait(Duration.ofMillis(500)).withAttempts(3));
-```
+    db.transaction(tx -> transfer(tx), TransactionOptions.lockWait(Duration.ofSeconds(2)));
+
+    db.transaction(tx -> transfer(tx),
+            TransactionOptions.lockWait(Duration.ofMillis(500)).withAttempts(3));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    import java.time.Duration
+    import org.aristonis.diwan.database.TransactionOptions
+
+    db.transaction({ tx -> transfer(tx) }, TransactionOptions.lockWait(Duration.ofSeconds(2)))
+
+    db.transaction({ tx -> transfer(tx) },
+        TransactionOptions.lockWait(Duration.ofMillis(500)).withAttempts(3))
+    ```
 
 The transaction waits at most that long for any lock. On PostgreSQL Diwan runs
 `SET LOCAL lock_timeout` right after `BEGIN`, so it ends with the transaction. On SQLite and
@@ -240,14 +347,27 @@ failure.
 
 ### afterCommit and afterRollback
 
-```java
-db.transaction(tx -> {
-    tx.insert("insert into orders (id, total) values (?, ?)", orderId, total);
-    tx.afterCommit(() -> mailer.sendReceipt(orderId));
-    tx.afterRollback(() -> LOG.warning("order was not saved"));
-    return orderId;
-});
-```
+=== "Java"
+
+    ```java
+    db.transaction(tx -> {
+        tx.insert("insert into orders (id, total) values (?, ?)", orderId, total);
+        tx.afterCommit(() -> mailer.sendReceipt(orderId));
+        tx.afterRollback(() -> LOG.warning("order was not saved"));
+        return orderId;
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { tx ->
+        tx.insert("insert into orders (id, total) values (?, ?)", orderId, total)
+        tx.afterCommit { mailer.sendReceipt(orderId) }
+        tx.afterRollback { LOG.warning("order was not saved") }
+        orderId
+    }
+    ```
 
 - Outside a transaction, `afterCommit` runs at once and `afterRollback` is dropped.
 - `afterCommit` callbacks run after the outermost commit. A rolled-back savepoint drops its own callbacks.
@@ -261,13 +381,25 @@ db.transaction(tx -> {
 
 By default the root connection refuses calls from a thread that is inside one of its own transactions. Such a call would borrow a second connection, write outside the rollback and can deadlock a small pool. The failure is an `IllegalStateException` that tells you to use `tx`.
 
-```java
-Connection db = Connection.builder()
+=== "Java"
+
+    ```java
+    Connection db = Connection.builder()
+            .name("main")
+            .dataSource(dataSource)
+            .strictTransactions(false)     // only for deliberate writes outside, like an audit log
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val db = Connection.builder()
         .name("main")
         .dataSource(dataSource)
         .strictTransactions(false)     // only for deliberate writes outside, like an audit log
-        .build();
-```
+        .build()
+    ```
 
 ### Sessions
 
@@ -277,12 +409,23 @@ Connection db = Connection.builder()
 
 Register listeners on the connection's `events()`:
 
-```java
-Registration slow = db.events().whenQueryTakesLongerThan(
-        Duration.ofMillis(500),
-        event -> LOG.warning("slow query " + event.time().toMillis() + " ms: " + event.redacted()));
-slow.remove();
-```
+=== "Java"
+
+    ```java
+    Registration slow = db.events().whenQueryTakesLongerThan(
+            Duration.ofMillis(500),
+            event -> LOG.warning("slow query " + event.time().toMillis() + " ms: " + event.redacted()));
+    slow.remove();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val slow = db.events().whenQueryTakesLongerThan(Duration.ofMillis(500)) { event ->
+        LOG.warning("slow query ${event.time().toMillis()} ms: ${event.redacted()}")
+    }
+    slow.remove()
+    ```
 
 | Call | Use |
 |---|---|
@@ -299,20 +442,39 @@ A listener that throws after a successful statement raises `ListenerFailedExcept
 
 ### Query log
 
-```java
-ConnectionEvents events = db.events();
-events.enableQueryLog();
-List<LoggedQuery> log = events.getQueryLog();   // a copy, oldest first
-events.flushQueryLog();
-```
+=== "Java"
+
+    ```java
+    ConnectionEvents events = db.events();
+    events.enableQueryLog();
+    List<LoggedQuery> log = events.getQueryLog();   // a copy, oldest first
+    events.flushQueryLog();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val events = db.events()
+    events.enableQueryLog()
+    val log = events.queryLog   // a copy, oldest first
+    events.flushQueryLog()
+    ```
 
 The log is off by default and bounded. With `showBindingsInErrors` off, it stores `?` for every binding. Turn that on only in a debug build.
 
 ## Pretend mode
 
-```java
-List<LoggedQuery> plan = db.pretend(p -> p.statement("drop table users"));
-```
+=== "Java"
+
+    ```java
+    List<LoggedQuery> plan = db.pretend(p -> p.statement("drop table users"));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val plan = db.pretend { p -> p.statement("drop table users") }
+    ```
 
 Nothing reaches the database. Reads return no rows, counts are 0, and `statement` returns `true`. Listeners see the statements with a time of zero.
 
@@ -320,19 +482,38 @@ Nothing reaches the database. Reads return no rows, counts are 0, and `statement
 
 The manager's own connections use `DriverManager` and open a new JDBC connection per checkout. That suits tests and small tools. A server should hand the manager a pooled `DataSource`, as in this HikariCP recipe:
 
-```java
-HikariConfig hikari = new HikariConfig();
-hikari.setJdbcUrl("jdbc:postgresql://db.internal:5432/shop");
-hikari.setUsername("shop");
-hikari.setPassword(System.getenv("DB_PASSWORD"));
-hikari.setMaximumPoolSize(10);
+=== "Java"
 
-DatabaseManager db = DatabaseManager.builder()
+    ```java
+    HikariConfig hikari = new HikariConfig();
+    hikari.setJdbcUrl("jdbc:postgresql://db.internal:5432/shop");
+    hikari.setUsername("shop");
+    hikari.setPassword(System.getenv("DB_PASSWORD"));
+    hikari.setMaximumPoolSize(10);
+
+    DatabaseManager db = DatabaseManager.builder()
+            .config(config)
+            .connector(new PostgresConnector())
+            .dataSource("main", () -> new HikariDataSource(hikari))
+            .build();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val hikari = HikariConfig().apply {
+        jdbcUrl = "jdbc:postgresql://db.internal:5432/shop"
+        username = "shop"
+        password = System.getenv("DB_PASSWORD")
+        maximumPoolSize = 10
+    }
+
+    val db = DatabaseManager.builder()
         .config(config)
-        .connector(new PostgresConnector())
-        .dataSource("main", () -> new HikariDataSource(hikari))
-        .build();
-```
+        .connector(PostgresConnector())
+        .dataSource("main") { HikariDataSource(hikari) }
+        .build()
+    ```
 
 The supplier runs when the connection is first built. Diwan closes a data source that is `AutoCloseable` on `purge` or `close`, and `HikariDataSource` is. A name that is not configured is refused when the manager is built. With a direct connection, pass the pool to `Connection.builder().dataSource(pool)` and close it yourself.
 
