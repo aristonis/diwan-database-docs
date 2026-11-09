@@ -5,6 +5,20 @@ The full list of changes in each version is in the
 also has a page on [GitHub Releases](https://github.com/aristonis/diwan-database/releases), with the
 same notes and the release files.
 
+## 0.3.0 (2026-11-09)
+
+What apps built on 0.2.0 asked for. It adds:
+
+- **Testing:** the new `diwan-database-testing` artifact with `RefreshDatabase` (rollback or
+  truncate between tests) and database assertions. See [Testing](testing.md).
+- **Money:** strict `Casts.decimal(precision, scale)`, `Casts.decimalText`, and `sumDecimal`.
+- **Queries:** `whereContains`, `whereStartsWith`, `whereEndsWith` for user input; lock wait limits
+  per transaction, per statement and per connection; `truncate` of many tables.
+- **Schema:** table and view listing, `dropAllTables`, `dropAllViews` and `Migrator.fresh()`.
+- **Errors:** constraint names, columns and stable `DWN-` error codes on driver failures.
+
+Nothing breaks.
+
 ## 0.2.0 (2026-11-08)
 
 Fixes and Laravel ports that apps built on 0.1.0 asked for. It adds:

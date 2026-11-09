@@ -5,6 +5,18 @@
 صفحة على [GitHub Releases](https://github.com/aristonis/diwan-database/releases) فيها الملاحظات نفسها
 وملفات الإصدار.
 
+## 0.3.0 (2026-11-09)
+
+ما طلبته تطبيقات بُنيت على 0.2.0. يضيف:
+
+- **الاختبار:** حزمة `diwan-database-testing` الجديدة مع `RefreshDatabase` (تراجع أو إفراغ بين الاختبارات) وتأكيدات قاعدة البيانات. انظر [الاختبار](testing.md).
+- **المال:** `Casts.decimal(precision, scale)` الصارم، و`Casts.decimalText`، و`sumDecimal`.
+- **الاستعلامات:** `whereContains` و`whereStartsWith` و`whereEndsWith` لمدخلات المستخدم؛ حدود انتظار الأقفال لكل معاملة ولكل جملة ولكل اتصال؛ و`truncate` لعدة جداول.
+- **المخطط:** سرد الجداول والعروض، و`dropAllTables` و`dropAllViews` و`Migrator.fresh()`.
+- **الأخطاء:** أسماء القيود والأعمدة ورموز أخطاء `DWN-` ثابتة في أعطال المشغّل.
+
+لا شيء ينكسر.
+
 ## 0.2.0 (2026-11-08)
 
 إصلاحات ومنقولات من Laravel طلبتها تطبيقات بُنيت على 0.1.0. يضيف:

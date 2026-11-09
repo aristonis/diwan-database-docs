@@ -7,7 +7,7 @@
 تعيش النماذج في `diwan-database-eloquent`:
 
 ```kotlin
-implementation("org.aristonis:diwan-database-eloquent:0.2.0")
+implementation("org.aristonis:diwan-database-eloquent:0.3.0")
 ```
 
 ## تعريف نموذج
