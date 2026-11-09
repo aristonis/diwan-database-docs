@@ -8,9 +8,9 @@ This page takes you from an empty project to a migrated table, a query and a mod
 
     ```kotlin
     dependencies {
-        implementation("org.aristonis:diwan-database:0.3.0")
-        implementation("org.aristonis:diwan-database-sqlite:0.3.0")
-        implementation("org.aristonis:diwan-database-eloquent:0.3.0")   // only if you use models
+        implementation("org.aristonis:diwan-database:0.3.1")
+        implementation("org.aristonis:diwan-database-sqlite:0.3.1")
+        implementation("org.aristonis:diwan-database-eloquent:0.3.1")   // only if you use models
         runtimeOnly("org.xerial:sqlite-jdbc:3.54.1.0")                  // the JDBC driver
     }
     ```
@@ -19,9 +19,9 @@ This page takes you from an empty project to a migrated table, a query and a mod
 
     ```groovy
     dependencies {
-        implementation 'org.aristonis:diwan-database:0.3.0'
-        implementation 'org.aristonis:diwan-database-sqlite:0.3.0'
-        implementation 'org.aristonis:diwan-database-eloquent:0.3.0'   // only if you use models
+        implementation 'org.aristonis:diwan-database:0.3.1'
+        implementation 'org.aristonis:diwan-database-sqlite:0.3.1'
+        implementation 'org.aristonis:diwan-database-eloquent:0.3.1'   // only if you use models
         runtimeOnly 'org.xerial:sqlite-jdbc:3.54.1.0'                  // the JDBC driver
     }
     ```
@@ -32,17 +32,17 @@ This page takes you from an empty project to a migrated table, a query and a mod
     <dependency>
       <groupId>org.aristonis</groupId>
       <artifactId>diwan-database</artifactId>
-      <version>0.3.0</version>
+      <version>0.3.1</version>
     </dependency>
     <dependency>
       <groupId>org.aristonis</groupId>
       <artifactId>diwan-database-sqlite</artifactId>
-      <version>0.3.0</version>
+      <version>0.3.1</version>
     </dependency>
     <dependency>
       <groupId>org.aristonis</groupId>
       <artifactId>diwan-database-eloquent</artifactId>
-      <version>0.3.0</version>
+      <version>0.3.1</version>
     </dependency>
     <dependency>
       <groupId>org.xerial</groupId>

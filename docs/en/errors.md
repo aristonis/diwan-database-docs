@@ -130,7 +130,7 @@ index name, and the columns involved. From a `QueryException`, reach the driver 
 | Code | Kind | Meaning |
 |---|---|---|
 | `DWN-CST-0001` | `UNIQUE_VIOLATION` | A unique or primary key was broken. |
-| `DWN-CST-0002` | `FOREIGN_KEY_VIOLATION` | A foreign key was broken. |
+| `DWN-CST-0002` | `FOREIGN_KEY_VIOLATION` | A foreign key was broken. On PostgreSQL this covers SQL state 23503 and 23001 (`restrict_violation`, raised for a key declared `restrictOnDelete()`); both carry the constraint name in `key()`. |
 | `DWN-CST-0003` | `CHECK_VIOLATION` | A check constraint was broken. |
 | `DWN-CST-0004` | `NOT_NULL_VIOLATION` | A NOT NULL column received null. |
 | `DWN-TXN-0001` | `CONCURRENCY` | A deadlock, a serialization failure or a busy database. Run the work again. |

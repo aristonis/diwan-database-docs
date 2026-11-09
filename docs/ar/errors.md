@@ -124,7 +124,7 @@ SQL: insert into users (email) values (?) (Connection: main, SQL state 23505, ve
 | الرمز | التصنيف | المعنى |
 |---|---|---|
 | `DWN-CST-0001` | `UNIQUE_VIOLATION` | كُسر مفتاح unique أو مفتاح أساسي. |
-| `DWN-CST-0002` | `FOREIGN_KEY_VIOLATION` | كُسر مفتاح أجنبي. |
+| `DWN-CST-0002` | `FOREIGN_KEY_VIOLATION` | كُسر مفتاح أجنبي. على PostgreSQL يشمل حالة SQL رقم 23503 و23001 (`restrict_violation`، تُرفع لمفتاح معرّف بـ `restrictOnDelete()`)؛ وكلاهما يحمل اسم القيد في `key()`. |
 | `DWN-CST-0003` | `CHECK_VIOLATION` | كُسر قيد check. |
 | `DWN-CST-0004` | `NOT_NULL_VIOLATION` | تلقّى عمود NOT NULL قيمة null. |
 | `DWN-TXN-0001` | `CONCURRENCY` | deadlock أو فشل serialization أو قاعدة بيانات مشغولة. أعد تنفيذ العمل. |
