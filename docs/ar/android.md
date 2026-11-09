@@ -144,6 +144,7 @@
 |---|---|---|
 | `upsert` (في query builder والنماذج) | SQLite 3.24، أي API 30 | `UnsupportedOperationException` تسمّي النسخة، قبل أي SQL |
 | right join | SQLite 3.39، أي API 34 | خطأ SQLite نفسه ضمن `QueryException` |
+| تفاصيل الأعمدة في `getColumns` (معلومات الأعمدة المولَّدة) | SQLite 3.26 | قائمة أعمدة عادية دون معلومات التوليد |
 | `insertOrIgnore` و`updateOrInsert` | أي نسخة | تعمل |
 
 `updateOrInsert` تقرأ ثم تكتب وليست ذرّية (atomic). على API 28 و29 اكتب قراءة ثم كتابة داخل transaction بدل `upsert`.

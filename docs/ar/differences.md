@@ -10,6 +10,7 @@
 | `null` أو `false` لـ "غير موجود" | `Optional` من `find` و`first` و`selectOne` و`scalar`؛ و`findOrFail` ترمي استثناءً |
 | تواريخ PHP وحروف الصيغ (`Y-m-d`) | `java.time` وأنماط `DateTimeFormatter` (`yyyy-MM-dd`) |
 | الصفوف مصفوفات | الصفوف maps غير قابلة للتعديل بترتيب الـ select |
+| `getColumns` تعيد مصفوفات | `getColumns` تعيد كائنات `ColumnInfo` مكتوبة النوع |
 | القراءة الكسولة تعمل من أي قراءة خاصية | `getAttribute("posts")` لا تحمّل علاقة أبدًا؛ استعمل `related` أو `relatedMany` |
 | العلاقات تُوجد باسم الدالة | دالة مكتوبة النوع مع مدخل في `RelationMap`، فلا يكسرها R8 (أدوات تصغير الكود وتشويشه في Android) |
 | أسماء morph والـ global scope تُخمَّن من call stack أو من closure | تمرّر الاسم بنفسك |
@@ -46,6 +47,13 @@
 | `forceDelete()` على builder تتخطى كل global scope | تتخطى scope الحذف الناعم فقط |
 | morph map اختيارية | إلزامية ما لم تستدع `requireMorphMap(false)` |
 | `oldestOfMany` قد تعيد أعلى مفتاح بين المتعادلين | تعيد الأدنى |
+
+## فحص المخطط
+
+| Laravel | Diwan |
+|---|---|
+| `getColumns` تسرد الأعمدة المخفية للجدول الافتراضي (virtual table) | لا تُسرد |
+| `hasIndex` تقبل نوع طريقة الفهرس مثل `btree` | لا نوع طريقة: SQLite لا تملك واحدًا. وبدلًا منه يرشّح enum اسمه `IndexType` (`PRIMARY` و`UNIQUE`) |
 
 ## إضافات Diwan
 

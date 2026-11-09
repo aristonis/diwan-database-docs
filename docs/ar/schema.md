@@ -311,6 +311,62 @@ SQLite لا تستطيع إضافة primary key (مفتاح أساسي) أو for
 
 يضيف `IndexInfo` أيضًا `orders()` (`asc` أو `desc` لكل عمود)، و`collations()` (نص فارغ للافتراضي)، و`where()` وهي `Optional` فيها نص شرط الفهرس الجزئي. النص من قاعدة البيانات نفسها، وPostgreSQL يعيد كتابته، فقارِن النصوص داخل قاعدة بيانات واحدة فقط.
 
+### الأعمدة وفحص الفهارس
+
+=== "Java"
+
+    ```java
+    for (ColumnInfo column : schema.getColumns("users")) {
+        System.out.println(column.name() + " " + column.type() + " nullable=" + column.isNullable());
+    }
+    List<String> names = schema.getColumnListing("users");           // names, in column order
+    boolean hasBoth = schema.hasColumns("users", List.of("id", "email"));
+
+    List<String> indexNames = schema.getIndexListing("users");       // lower case
+    boolean byName = schema.hasIndex("users", "users_email_unique");
+    boolean byColumns = schema.hasIndex("users", List.of("email"), IndexType.UNIQUE);
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    for (column in schema.getColumns("users")) {
+        println("${column.name()} ${column.type()} nullable=${column.isNullable()}")
+    }
+    val names = schema.getColumnListing("users")           // names, in column order
+    val hasBoth = schema.hasColumns("users", listOf("id", "email"))
+
+    val indexNames = schema.getIndexListing("users")       // lower case
+    val byName = schema.hasIndex("users", "users_email_unique")
+    val byColumns = schema.hasIndex("users", listOf("email"), IndexType.UNIQUE)
+    ```
+
+تعيد `getColumns` كائن `ColumnInfo` واحدًا لكل عمود بترتيب الأعمدة، لجدول أو view. والجدول غير الموجود يعطي قائمة فارغة. `ColumnInfo` قيمة غير قابلة للتعديل:
+
+| الدالة | ما تعيده |
+|---|---|
+| `name()` | اسم العمود. |
+| `typeName()` | النوع الأساسي بأحرف صغيرة، مثل `varchar`. |
+| `type()` | النوع الكامل بأحرف صغيرة، مثل `varchar(255)`. |
+| `collation()` | `Optional` فيها اسم الـ collation؛ فارغة للافتراضي. |
+| `isNullable()` | هل يقبل العمود `NULL`. |
+| `defaultValue()` | `Optional` فيها القيمة الافتراضية نص SQL خامًا؛ فارغة إن لم توجد. |
+| `isAutoIncrement()` | هل تملأ قاعدة البيانات العمود بالرقم التالي. |
+| `comment()` | `Optional` فيها تعليق العمود. |
+| `generation()` | `Optional<ColumnGeneration>` للعمود المولَّد (generated): فيها `isStored()` و`expression()`. |
+
+- **SQLite وAndroid:** `type()` هو نص النوع المعلن بأحرف صغيرة، كما كُتب في جملة `create table`. لا يُعدّ العمود auto-increment إلا إذا كان مفتاحًا أساسيًا صحيحًا من عمود واحد، ويشمل ذلك `integer primary key desc`. و`comment()` فارغة دائمًا. أعمدة الجدول الافتراضي (virtual table) المخفية لا تُسرد. ويُقرأ الـ collation وتعبير التوليد من SQL إنشاء الجدول. الأعمدة المولَّدة تحتاج SQLite 3.31؛ وعلى SQLite الأقدم من 3.26 تكون القائمة عادية دون معلومات التوليد.
+- **PostgreSQL:** `type()` هو النوع بصيغة قاعدة البيانات نفسها، مثل `character varying(255)`، و`typeName()` هو الاسم الداخلي للنوع، مثل `varchar`؛ وأنواع المصفوفات تبدأ بشرطة سفلية، مثل `_int4`. يكون العمود auto-increment إذا بدأ default بـ `nextval(` أو كان عمود identity. وللعمود المولَّد يكون الـ default فارغًا ويكون التعبير في `generation()`. الأعمدة المحذوفة لا تُسرد أبدًا. قبل PostgreSQL 12 لا توجد معلومات التوليد، وقبل 10 لا توجد معلومات identity.
+
+`getColumnListing` تعيد الأسماء فقط. و`hasColumns` تعيد `true` فقط إذا وُجدت كل الأسماء، مع تجاهل حالة الأحرف؛ والقائمة الفارغة تعطي `true`.
+
+`getIndexListing` تعيد أسماء الفهارس بأحرف صغيرة، فاسم فهرس PostgreSQL المقتبس بأحرف مختلطة لا يُعاد كما كُتب. و`hasIndex` تأخذ اسم فهرس أو قائمة أعمدة، مع `IndexType` اختياري (`PRIMARY` أو `UNIQUE`). و`UNIQUE` تطابق المفتاح الأساسي أيضًا، كما في Laravel. مثال:
+
+- الاسم يُقارَن مع تجاهل حالة الأحرف.
+- قائمة الأعمدة يجب أن تطابق أعمدة الفهرس بالترتيب نفسه، مع تجاهل حالة الأحرف.
+- `IndexType.PRIMARY` يطابق المفتاح الأساسي فقط. و`IndexType.UNIQUE` يطابق أي فهرس unique، والمفتاح الأساسي يُعدّ منها.
+- المفتاح الأساسي يظهر فهرسًا في القاعدتين؛ وSQLite تسمّيه `primary`.
+
 ### سرد كل شيء وحذفه
 
 === "Java"
@@ -356,7 +412,7 @@ SQLite لا تستطيع إضافة primary key (مفتاح أساسي) أو for
     val plan = schema.pretend { s -> s.create("t") { table -> table.id() } }
     ```
 
-`pretend` تسرد الجمل ولا تغير شيئًا. هي تقرأ الجداول الحية، فتعرض إعادة البناء بجملها الحقيقية، لكن الجدول الذي أُنشئ قبلها في نفس تشغيل pretend (وضع المعاينة دون تنفيذ) لا يكون موجودًا بالنسبة لها. و`hasTable` و`hasColumn` تعيدان `false` في وضع pretend.
+`pretend` تسرد الجمل ولا تغير شيئًا. هي تقرأ الجداول الحية، فتعرض إعادة البناء بجملها الحقيقية، لكن الجدول الذي أُنشئ قبلها في نفس تشغيل pretend (وضع المعاينة دون تنفيذ) لا يكون موجودًا بالنسبة لها. و`hasTable` و`hasColumn` تعيدان `false` في وضع pretend. أما `getColumns` و`getColumnListing` و`hasColumns` و`getIndexListing` و`hasIndex` فتقرأ المخطط الحي، حتى في وضع pretend.
 
 داخل transaction (معاملة) استدعِ `schema.on(tx)` حتى يعمل العمل على المعاملة: `schema.on(tx).create(...)`.
 

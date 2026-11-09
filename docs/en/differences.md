@@ -10,6 +10,7 @@ it behaves differently on purpose. Each row is a choice, not a missing feature.
 | `null` or `false` for "not found" | `Optional` from `find`, `first`, `selectOne` and `scalar`; `findOrFail` throws |
 | PHP dates and format letters (`Y-m-d`) | `java.time` and `DateTimeFormatter` patterns (`yyyy-MM-dd`) |
 | Rows are arrays | Rows are unmodifiable maps in select order |
+| `getColumns` returns arrays | `getColumns` returns typed `ColumnInfo` objects |
 | Lazy loading works from any attribute read | `getAttribute("posts")` never loads a relation; use `related` or `relatedMany` |
 | Relations found by method name | A typed method plus a `RelationMap` entry, so R8 cannot break it |
 | Morph and global-scope names guessed from the call stack or a closure | You pass the name |
@@ -46,6 +47,13 @@ it behaves differently on purpose. Each row is a choice, not a missing feature.
 | `forceDelete()` on a builder skips every global scope | Skips only the soft-delete scope |
 | The morph map is optional | Required unless you call `requireMorphMap(false)` |
 | `oldestOfMany` can return the highest key among ties | Returns the lowest |
+
+## Schema inspection
+
+| Laravel | Diwan |
+|---|---|
+| `getColumns` lists the hidden columns of a virtual table | Left out |
+| `hasIndex` takes an index method type such as `btree` | No method type: SQLite has none. An `IndexType` enum (`PRIMARY`, `UNIQUE`) filters instead |
 
 ## Diwan additions
 

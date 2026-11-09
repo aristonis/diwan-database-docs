@@ -350,6 +350,62 @@ Inside a transaction you opened yourself, a table that other tables point at is 
 for the default) and `where()`, an `Optional` with the condition's SQL text. The text is the
 database's own, and PostgreSQL rewrites it, so compare it within one database.
 
+### Columns and index checks
+
+=== "Java"
+
+    ```java
+    for (ColumnInfo column : schema.getColumns("users")) {
+        System.out.println(column.name() + " " + column.type() + " nullable=" + column.isNullable());
+    }
+    List<String> names = schema.getColumnListing("users");           // names, in column order
+    boolean hasBoth = schema.hasColumns("users", List.of("id", "email"));
+
+    List<String> indexNames = schema.getIndexListing("users");       // lower case
+    boolean byName = schema.hasIndex("users", "users_email_unique");
+    boolean byColumns = schema.hasIndex("users", List.of("email"), IndexType.UNIQUE);
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    for (column in schema.getColumns("users")) {
+        println("${column.name()} ${column.type()} nullable=${column.isNullable()}")
+    }
+    val names = schema.getColumnListing("users")           // names, in column order
+    val hasBoth = schema.hasColumns("users", listOf("id", "email"))
+
+    val indexNames = schema.getIndexListing("users")       // lower case
+    val byName = schema.hasIndex("users", "users_email_unique")
+    val byColumns = schema.hasIndex("users", listOf("email"), IndexType.UNIQUE)
+    ```
+
+`getColumns` returns one `ColumnInfo` per column, in column order, for a table or a view. An unknown table gives an empty list. `ColumnInfo` is an immutable value:
+
+| Method | Returns |
+|---|---|
+| `name()` | The column name. |
+| `typeName()` | The base type in lower case, such as `varchar`. |
+| `type()` | The full type in lower case, such as `varchar(255)`. |
+| `collation()` | An `Optional` with the collation name; empty for the default. |
+| `isNullable()` | Whether the column accepts `NULL`. |
+| `defaultValue()` | An `Optional` with the default as raw SQL text; empty for none. |
+| `isAutoIncrement()` | Whether the database fills the column with the next number. |
+| `comment()` | An `Optional` with the column comment. |
+| `generation()` | An `Optional<ColumnGeneration>` for a generated column: `isStored()` and `expression()`. |
+
+- **SQLite and Android:** `type()` is the declared type text in lower case, as written in the `create table` statement. A column counts as auto-increment only when it is a single-column integer primary key, including `integer primary key desc`. `comment()` is always empty. Hidden columns of a virtual table are left out. Collation and the generation expression are read from the table's `create` SQL. Generated columns need SQLite 3.31; on SQLite older than 3.26 the list is plain, with no generation information.
+- **PostgreSQL:** `type()` is the database's own formatted type, such as `character varying(255)`, and `typeName()` is the internal type name, such as `varchar`; array types begin with an underscore, such as `_int4`. A column is auto-increment when its default starts with `nextval(` or when it is an identity column. For a generated column the default is empty and the expression is in `generation()`. Dropped columns are never listed. Below PostgreSQL 12 there is no generation information, and below 10 no identity information.
+
+`getColumnListing` returns only the names. `hasColumns` is `true` only when every name exists, ignoring case; an empty list gives `true`.
+
+`getIndexListing` returns the index names in lower case, so a quoted mixed-case PostgreSQL index name is not returned as written. `hasIndex` takes an index name or a list of columns, and an optional `IndexType` (`PRIMARY` or `UNIQUE`). `UNIQUE` also matches the primary key, as in Laravel. For example:
+
+- A name is compared ignoring case.
+- A column list must match the index's columns in the same order, ignoring case.
+- `IndexType.PRIMARY` matches only the primary key. `IndexType.UNIQUE` matches any unique index, and the primary key counts as one.
+- The primary key shows up as an index on both databases; SQLite reports it as `primary`.
+
 ### List and drop everything
 
 === "Java"
@@ -397,7 +453,7 @@ database's own, and PostgreSQL rewrites it, so compare it within one database.
 
 `pretend` lists the statements and changes nothing. It reads the live tables, so a rebuild shows its
 real statements, but a table made earlier in the same pretend run does not exist for it.
-`hasTable` and `hasColumn` return `false` in pretend mode.
+`hasTable` and `hasColumn` return `false` in pretend mode. `getColumns`, `getColumnListing`, `hasColumns`, `getIndexListing` and `hasIndex` read the live schema, also in pretend mode.
 
 Inside a transaction, call `schema.on(tx)` so the work runs on the transaction: `schema.on(tx).create(...)`.
 

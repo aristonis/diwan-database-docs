@@ -158,6 +158,7 @@ Android ships its own SQLite, and its version follows the API level.
 |---|---|---|
 | `upsert` (query builder and models) | SQLite 3.24, API 30 | `UnsupportedOperationException` naming the version, before any SQL |
 | Right join | SQLite 3.39, API 34 | SQLite's own error as a `QueryException` |
+| Column details in `getColumns` (generated-column information) | SQLite 3.26 | plain column list, no generated info |
 | `insertOrIgnore`, `updateOrInsert` | any version | works |
 
 `updateOrInsert` reads, then writes, and is not atomic. On API 28 and 29, write a read-then-write
