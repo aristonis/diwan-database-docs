@@ -47,6 +47,14 @@ it behaves differently on purpose. Each row is a choice, not a missing feature.
 | The morph map is optional | Required unless you call `requireMorphMap(false)` |
 | `oldestOfMany` can return the highest key among ties | Returns the lowest |
 
+## Diwan additions
+
+Laravel has none of these:
+
+- Partial indexes: `where`, `whereNull` and `whereNotNull` on an index.
+- Index order and collation: `asc`, `desc` and `collate` on an index.
+- `DiwanError.table()`, the table a failure concerns.
+
 ## Not in 0.2.0
 
 - Custom event classes, string event names and wildcard listeners.

@@ -136,6 +136,20 @@ Diwan begins Android transactions with the exclusive `beginTransaction`, or with
 other threads. Call `enableWriteAheadLogging()` in `onConfigure`, as above, and keep
 transactions short.
 
+## Deferred foreign keys and commit
+
+With `defer_foreign_keys` on and `foreign_keys` on, `commit()` runs `PRAGMA foreign_key_check` first.
+Only the outermost commit does this. If the check finds a broken key, the transaction rolls back,
+none of its writes stay, and the commit throws a foreign key `DriverException` that names the child
+table. The connection can begin a new transaction after that.
+
+Limits:
+
+- A key declared `DEFERRABLE INITIALLY DEFERRED` in raw DDL is not checked, because the check runs
+  only when `defer_foreign_keys` is on.
+- The check scans the whole database. An orphan row left from before the transaction also fails the
+  commit.
+
 ## What needs a newer Android
 
 Android ships its own SQLite, and its version follows the API level.

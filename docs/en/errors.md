@@ -158,9 +158,13 @@ gives:
 | Foreign key | Key: the constraint name. Columns: none. | Nothing. |
 | Check | Key: the constraint name. Columns: none. | Key: the constraint name. On older SQLite, such as the one in Android 9, an unnamed check reports its expression text as the key. Name your checks. |
 | Not null | Key: none. Columns: the column. | Columns: the column. |
+| Table (`table()`) | The table the server names. For a foreign key, the child table that holds the key, even when you deleted the parent. | The table of a unique or not null failure, read from the message. Empty for a foreign key and a check, and when the columns come from two tables. |
 
 PostgreSQL gives these values from the server's structured error fields, not from the message
 text, so they do not depend on the server's language.
+
+`table()` is empty when the driver cannot name a table. A serialized `DiwanError` written by an older
+version reads `table()` as empty.
 
 The message of a `DriverException` and of a `QueryException` ends with the code, the words of its
 kind, and then the key and columns when they are known:

@@ -161,6 +161,46 @@
     table.renameIndex("old_name", "new_name")
     ```
 
+### الفهارس الجزئية (Partial indexes)
+
+تعيد `index` و`unique` قيمة `IndexDefinition`. استدعِ عليها `where` أو `whereNull` أو `whereNotNull` لتفهرس الصفوف المطابقة فقط. تُربط الشروط المتعددة بـ `and`.
+
+=== "Java"
+
+    ```java
+    table.index(List.of("id"), "attempts_started").where("outcome", "STARTED");
+    table.unique(List.of("email"), "users_email_live").whereNull("deleted_at");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index(listOf("id"), "attempts_started").where("outcome", "STARTED")
+    table.unique(listOf("email"), "users_email_live").whereNull("deleted_at")
+    ```
+
+`where(column, value)` تقارن عمودًا بقيمة. القيمة تكون نصًا أو قيمة منطقية أو رقمًا منتهيًا أو `null`، وتعني `null` الدالة `whereNull`. أي نوع آخر يُرفض عند الاستدعاء. لا يلزم أن يكون عمود الشرط من أعمدة الفهرس. أما `.index()` و`.unique()` على مستوى العمود فلا تأخذان شرطًا.
+
+على PostgreSQL الفهرس الفريد الجزئي هو فهرس فريد، وليس قيد unique. تحذف `dropUnique(name)` أيًّا منهما الموجود بهذا الاسم. وعلى SQLite تحتفظ إعادة بناء الجدول بكل فهرس جزئي مع شرطه.
+
+### ترتيب الفهرس والـ collation
+
+تحدد `asc` و`desc` و`collate` على `IndexDefinition` ترتيب العمود المفهرس ومقارنته. يجب أن يكون العمود من أعمدة الفهرس، وإلا رمى الاستدعاء `IllegalArgumentException`. ويبقى اسم الفهرس الافتراضي مكوّنًا من أسماء الأعمدة فقط.
+
+=== "Java"
+
+    ```java
+    table.index(List.of("module_id", "id"), "latest_per_module").desc("id");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index(listOf("module_id", "id"), "latest_per_module").desc("id")
+    ```
+
+`collate(column, name)` يأخذ اسم collation تعرفه قاعدة البيانات، مثل `NOCASE` على SQLite، ويُكتب كما هو. اربط الاستدعاءات: `table.index(...).where(...).desc(...)`. وتحتفظ إعادة بناء الجدول على SQLite بالترتيب التنازلي وبالـ collation.
+
 ## المفاتيح الأجنبية (Foreign keys)
 
 === "Java"
@@ -268,6 +308,8 @@ SQLite لا تستطيع إضافة primary key (مفتاح أساسي) أو for
         println("${key.columns()} -> ${key.foreignTable()}${key.foreignColumns()}")
     }
     ```
+
+يضيف `IndexInfo` أيضًا `orders()` (`asc` أو `desc` لكل عمود)، و`collations()` (نص فارغ للافتراضي)، و`where()` وهي `Optional` فيها نص شرط الفهرس الجزئي. النص من قاعدة البيانات نفسها، وPostgreSQL يعيد كتابته، فقارِن النصوص داخل قاعدة بيانات واحدة فقط.
 
 ### سرد كل شيء وحذفه
 

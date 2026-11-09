@@ -47,6 +47,14 @@
 | morph map اختيارية | إلزامية ما لم تستدع `requireMorphMap(false)` |
 | `oldestOfMany` قد تعيد أعلى مفتاح بين المتعادلين | تعيد الأدنى |
 
+## إضافات Diwan
+
+لا يملك Laravel أيًّا منها:
+
+- الفهارس الجزئية: `where` و`whereNull` و`whereNotNull` على الفهرس.
+- ترتيب الفهرس والـ collation: `asc` و`desc` و`collate` على الفهرس.
+- `DiwanError.table()`، أي الجدول الذي يخصّه الفشل.
+
 ## ليس في 0.2.0
 
 - أصناف أحداث مخصّصة، وأسماء أحداث نصية، وlisteners بالنمط العام (wildcard).

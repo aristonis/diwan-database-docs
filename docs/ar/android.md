@@ -127,6 +127,15 @@
 يبدأ Diwan معاملات Android بـ `beginTransaction` الحصرية (exclusive)، أو بـ `beginTransactionNonExclusive` إذا ضبط الاتصال `transaction_mode` على `immediate` (انظر [الاتصالات](connections.md)). بلا write-ahead logging (WAL، سجل الكتابة المسبقة) تمنع transaction طويلة القراءات من threads أخرى.
 استدعِ `enableWriteAheadLogging()` في `onConfigure` كما أعلاه، وأبقِ المعاملات قصيرة.
 
+## المفاتيح الأجنبية المؤجلة والـ commit
+
+عندما يكون `defer_foreign_keys` و`foreign_keys` مفعّلين، يشغّل `commit()` أولًا `PRAGMA foreign_key_check`. ويحدث هذا عند الـ commit الخارجي فقط. إذا وجد الفحص مفتاحًا مكسورًا، تُعاد المعاملة إلى الوراء (rollback) ولا يبقى منها أي كتابة، ويرمي الـ commit `DriverException` من نوع المفتاح الأجنبي يسمّي الجدول الابن. بعد ذلك يستطيع الاتصال بدء معاملة جديدة.
+
+القيود:
+
+- المفتاح المعلن `DEFERRABLE INITIALLY DEFERRED` في DDL الخام لا يُفحص، لأن الفحص يعمل فقط عندما يكون `defer_foreign_keys` مفعّلًا.
+- الفحص يمسح قاعدة البيانات كلها. صف يتيم بقي من قبل المعاملة يُفشل الـ commit أيضًا.
+
 ## ما يحتاج Android أحدث
 
 يأتي Android بنسخة SQLite خاصة به، ونسختها تتبع مستوى الـ API.

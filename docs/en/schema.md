@@ -178,6 +178,56 @@ still uses cannot be dropped, so drop the index or key first, in the same call i
     table.renameIndex("old_name", "new_name")
     ```
 
+### Partial indexes
+
+`index` and `unique` return an `IndexDefinition`. Call `where`, `whereNull` or `whereNotNull` on it to
+index only the rows that match. Several conditions are joined with `and`.
+
+=== "Java"
+
+    ```java
+    table.index(List.of("id"), "attempts_started").where("outcome", "STARTED");
+    table.unique(List.of("email"), "users_email_live").whereNull("deleted_at");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index(listOf("id"), "attempts_started").where("outcome", "STARTED")
+    table.unique(listOf("email"), "users_email_live").whereNull("deleted_at")
+    ```
+
+`where(column, value)` compares a column with a value. The value can be text, a boolean, a finite
+number or `null`, and `null` means `whereNull`. Any other type is refused when you make the call. The
+column in a condition need not be one of the index's columns. Column-level `.index()` and `.unique()`
+take no condition.
+
+On PostgreSQL a partial unique index is a unique index, not a unique constraint. `dropUnique(name)`
+drops whichever of the two exists under that name. On SQLite a table rebuild keeps each partial index
+with its condition.
+
+### Index order and collation
+
+`asc`, `desc` and `collate` on an `IndexDefinition` set how an indexed column is sorted and compared.
+The column must be one of the index's columns, or the call throws `IllegalArgumentException`. The
+default index name still uses only the column names.
+
+=== "Java"
+
+    ```java
+    table.index(List.of("module_id", "id"), "latest_per_module").desc("id");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index(listOf("module_id", "id"), "latest_per_module").desc("id")
+    ```
+
+`collate(column, name)` takes a collation name the database knows, such as `NOCASE` on SQLite, and
+writes it as given. Chain the calls: `table.index(...).where(...).desc(...)`. A SQLite table rebuild
+keeps descending order and collations.
+
 ## Foreign keys
 
 === "Java"
@@ -295,6 +345,10 @@ Inside a transaction you opened yourself, a table that other tables point at is 
         println("${key.columns()} -> ${key.foreignTable()}${key.foreignColumns()}")
     }
     ```
+
+`IndexInfo` also reports `orders()` (`asc` or `desc` for each column), `collations()` (an empty string
+for the default) and `where()`, an `Optional` with the condition's SQL text. The text is the
+database's own, and PostgreSQL rewrites it, so compare it within one database.
 
 ### List and drop everything
 
