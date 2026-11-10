@@ -170,6 +170,7 @@ A `decimal` column has numeric affinity, so `10.10` reads as the double `10.1`. 
 use a scaled integer column, or text with a fixed scale. Dates are stored as
 `yyyy-MM-dd HH:mm:ss` text, and an `Instant` as UTC text or whole microseconds, as on the desktop
 SQLite driver.
+An `OffsetTime` binding is stored as UTC text, `HH:mm:ss+00:00`, on both.
 
 ## Debug query log
 

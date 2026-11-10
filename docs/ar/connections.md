@@ -73,6 +73,7 @@ database.connections.cache.database=/var/lib/shop/cache.db
 | `sqlite`: `foreign_keys` و`busy_timeout` و`transaction_mode` | المفاتيح الأجنبية مفعّلة افتراضيًا. و`busy_timeout` هو مدة انتظار الجلسة للقفل بالميلي ثانية. و`transaction_mode` قيمته `deferred` (الافتراضية) أو `immediate` أو `exclusive`. انظر [خيارات SQLite](#sqlite). |
 | `lock_wait` | مدة انتظار الجملة للقفل: `5s` أو `500ms` أو ميلي ثوانٍ بأرقام فقط. انظر [انتظار القفل](#lock-wait). |
 | `pgsql`: `sslmode` و`search_path` (أو `schema`) | تُمرَّر إلى العنوان باسم `sslmode` و`currentSchema`. |
+| `pgsql`: `timezone` | منطقة زمنية اختيارية للجلسة، مثل `UTC`. معطّلة افتراضيًا. انظر [الإعدادات](configuration.md#postgresql). |
 
 أي مفتاح آخر يُحفظ كخيار نصي للـ connector. ويمكن أن تقرأ القيمة من البيئة: `${DB_PASSWORD}` يفشل إن لم يوجد، و`${DB_HOST:-localhost}` يرجع إلى قيمة بديلة، و`$${X}` يبقى نصًا حرفيًا. والإعداد الخاطئ يرمي `DatabaseConfigException`، وهو يسمّي الاتصال والمفتاح ولا يذكر القيمة أبدًا.
 
@@ -270,6 +271,46 @@ database.connections.main.lock_wait=5s
     ```
 
 `transactionLevel()` يعيد 0 خارج المعاملة و1 للمعاملة الخارجية. وداخل معاملة تملكها حاوية (Spring) يكون أعلى مستوى لـ Diwan مجرد savepoint، وتحتفظ الحاوية بالـ commit والـ rollback.
+
+### جملة فاشلة على PostgreSQL
+
+تُلغي PostgreSQL المعاملة كلها حين تفشل جملة واحدة فيها، وترفض كل جملة بعدها حتى تتراجع. يتحقق Diwan من ذلك بنفسه. بعد جملة فاشلة، الجملة التالية أو الـ commit أو تحرير الـ savepoint يرمي `IllegalStateException` بهذه الرسالة، وسببه (cause) هو أول فشل:
+
+```text
+The transaction was aborted by a failed statement; roll back (or roll back to the savepoint) first
+```
+
+المعاملة المتداخلة (savepoint) التي تتراجع تزيل حالة الإلغاء، فتتابع المعاملة الخارجية. والتراجع عن المعاملة كلها يزيلها أيضًا. الـ callback الخاص بـ `transaction` يتراجع وحده حين يرمي، فلا ترى هذا إلا حين يلتقط كودك فشلًا داخل المعاملة ويتابع:
+
+=== "Java"
+
+    ```java
+    db.transaction(tx -> {
+        try {
+            tx.insert("insert into users (email) values (?)", "ada@example.org");   // duplicate: fails
+        } catch (UniqueConstraintViolationException e) {
+            // the transaction is aborted now
+        }
+        tx.insert("insert into logs (msg) values (?)", "retry");   // IllegalStateException
+        return null;
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { tx ->
+        try {
+            tx.insert("insert into users (email) values (?)", "ada@example.org")   // duplicate: fails
+        } catch (e: UniqueConstraintViolationException) {
+            // the transaction is aborted now
+        }
+        tx.insert("insert into logs (msg) values (?)", "retry")   // IllegalStateException
+        null
+    }
+    ```
+
+لتتابع بعد فشل متوقع، نفّذ الجملة المحفوفة بالخطر داخل `tx.transaction(...)` متداخلة، فيتراجع الـ savepoint الخاص بها وتبقى المعاملة الخارجية صالحة. لا تُعلَّم المعاملة ملغاة إلا بفشل يحمل SQL state من قاعدة البيانات؛ أما الفشل في جهة العميل، كقيمة لا يمكن قراءتها، فلا يلغيها. يعلن الـ driver ذلك عبر `DriverCapability.ERROR_ABORTS_TRANSACTION`، وهو ما يعلنه driver الخاص بـ PostgreSQL.
 
 ### المحاولات (attempts)
 

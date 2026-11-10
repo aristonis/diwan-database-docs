@@ -27,6 +27,9 @@ it behaves differently on purpose. Each row is a choice, not a missing feature.
 | `cursor()` returns a lazy collection | `QueryCursor`, which you close; an unclosed one keeps its connection |
 | Cursor and page tokens are your problem | Tokens are not signed; a forged one cannot inject SQL but can ask for other allowed rows |
 | `chunk` on a growing table | Same offset paging, so use `chunkById` |
+| A failed statement in a PostgreSQL transaction gives server error 25P02 on the next one | Diwan refuses the next statement, commit or savepoint release itself, with a message that says to roll back |
+| `whereRaw('? is null', ...)` with a bare placeholder | On PostgreSQL a bare `? is null` needs a cast, such as `?::text is null`, because the server cannot tell the type of the placeholder |
+| Reading a numeric `NaN` is not handled | A PostgreSQL numeric column holding NaN or Infinity fails with an error that names the column; `float` and `double` columns return NaN |
 
 ## Models
 

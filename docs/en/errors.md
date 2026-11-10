@@ -73,6 +73,16 @@ kind nor a known code, the message is the first part only. The message never hol
 database text. The Diwan error code that ends the message, described below, holds only constraint
 and column names.
 
+## A transaction aborted by a failed statement
+
+On PostgreSQL a failed statement aborts its transaction. Diwan then refuses the next statement, commit or savepoint release with an `IllegalStateException`, not a `QueryException`, whose message is:
+
+```text
+The transaction was aborted by a failed statement; roll back (or roll back to the savepoint) first
+```
+
+`getCause()` is the first failure. The server's own error `25P02` never reaches you. Roll back, or roll back to the savepoint, and the transaction is usable again. A `transaction` callback rolls back by itself, so this appears only when code catches a failure and continues. See [Connections and transactions](connections.md#a-failed-statement-on-postgresql).
+
 ## What messages never contain
 
 The message of a `QueryException` reads like this:

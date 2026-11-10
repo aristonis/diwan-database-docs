@@ -69,6 +69,16 @@ Database failure (SQL state unknown, vendor code 5): concurrency, SQLITE_BUSY
 
 الجزء الأول يظهر دائمًا. وبعد `: ` تأتي التصنيفات التي عرفها المشغّل بأحرف صغيرة، ثم اسم رمز نتيجة SQLite إذا كان Diwan يعرف الرمز. وإن لم يوجد تصنيف ولا رمز معروف فالرسالة هي الجزء الأول فقط. ولا تحمل الرسالة قيمًا ولا نص قاعدة البيانات أبدًا. ورمز Diwan الذي تنتهي به الرسالة، وهو موصوف أدناه، لا يحمل إلا أسماء القيود والأعمدة.
 
+## معاملة ألغتها جملة فاشلة
+
+على PostgreSQL تُلغي الجملة الفاشلة معاملتها. فيرفض Diwan الجملة التالية أو الـ commit أو تحرير الـ savepoint بـ `IllegalStateException` وليس `QueryException`، ورسالته:
+
+```text
+The transaction was aborted by a failed statement; roll back (or roll back to the savepoint) first
+```
+
+`getCause()` هو أول فشل. وخطأ الخادم `25P02` لا يصلك أبدًا. تراجع عن المعاملة، أو عن الـ savepoint، فتصير المعاملة صالحة من جديد. الـ callback الخاص بـ `transaction` يتراجع وحده، فلا يظهر هذا إلا حين يلتقط الكود فشلًا ويتابع. انظر [الاتصالات والمعاملات](connections.md#جملة-فاشلة-على-postgresql).
+
 ## ما لا تحتويه الرسائل أبدًا
 
 رسالة `QueryException` تبدو هكذا:

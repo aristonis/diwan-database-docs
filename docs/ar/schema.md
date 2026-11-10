@@ -73,6 +73,14 @@
 العمود `instant` يخزن microseconds كاملة على SQLite و`timestamptz` على PostgreSQL، وتحوّل بـ `Instants.toMicros` و`Instants.read`. SQLite ليس فيها ما يشبه `set`، فترفض هذا النوع.
 في النموذج اكتب العمود `instant` عبر `Casts.instant()`. أما أعمدة الطوابع (`created_at` و`updated_at` و`deleted_at`) فاضبط `TimestampFormat.INSTANT` على النموذج بدلًا من ذلك. انظر [النماذج](models.md#accessors-casts).
 
+### التواريخ والقيم على PostgreSQL
+
+- تحتفظ PostgreSQL بالـ microseconds. الكسر الأدق يُقرَّب إلى أقرب microsecond، فتبعد النتيجة عن القيمة التي كتبتها بأقل من أو بمقدار microsecond واحدة.
+- خزّن `Instant` في عمود `timestamptz`. ولتخزين قيم `Instant` في أعمدة `timestamp` العادية اضبط `timezone=UTC` على الاتصال (انظر [الإعدادات](configuration.md#postgresql))؛ بدونه تتزحزح القيمة بمنطقة الـ JVM أو الجلسة.
+- `timestamptz` و`timetz` و`infinity` و`-infinity` تُقرأ `OffsetDateTime` و`OffsetTime` وطرفي الزمن.
+- قراءة `NaN` أو `Infinity` من عمود `numeric` تفشل بخطأ يسمّي العمود ولا يعرض القيمة. أما عمود `float` أو `double` فيعيد `NaN`.
+- العلامة `?` وحدها في `? is null` تحتاج cast على PostgreSQL: `?::text is null`.
+
 ## المعدّلات (Modifiers)
 
 === "Java"

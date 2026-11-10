@@ -463,6 +463,8 @@ table, not a subquery or raw `from`.
 can make it skip rows. Cursor tokens are not signed. A forged token cannot inject SQL, but it can
 ask for any rows the query already allows.
 
+A cursor value can be `null`, a string, a number, a boolean, a `UUID`, an `Instant`, or a `LocalDate`, `LocalTime`, `LocalDateTime`, `OffsetDateTime` or `OffsetTime`, so a PostgreSQL `timetz` column works as an order column.
+
 When a sort column comes from a user, check it against a fixed list before it reaches the builder:
 
 === "Java"

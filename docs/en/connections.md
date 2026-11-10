@@ -73,6 +73,7 @@ All keys: [Configuration](configuration.md)
 | `sqlite`: `foreign_keys`, `busy_timeout`, `transaction_mode` | Foreign keys on by default. `busy_timeout` is how long a session waits for a lock, in milliseconds. `transaction_mode` is `deferred` (the default), `immediate` or `exclusive`. See [SQLite options](#sqlite-options). |
 | `lock_wait` | How long a statement waits for a lock: `5s`, `500ms` or milliseconds as digits. See [Lock wait](#lock-wait). |
 | `pgsql`: `sslmode`, `search_path` (or `schema`) | Passed to the URL as `sslmode` and `currentSchema`. |
+| `pgsql`: `timezone` | Optional session time zone, such as `UTC`. Off by default. See [Configuration](configuration.md#postgresql). |
 
 Any other key is kept as a string option for the connector. A value can read the environment: `${DB_PASSWORD}` fails if unset, `${DB_HOST:-localhost}` falls back, `$${X}` stays literal. A bad configuration throws `DatabaseConfigException`, which names the connection and key but never the value.
 
@@ -288,6 +289,46 @@ A transaction inside a transaction uses a savepoint. If the inner callback throw
     ```
 
 `transactionLevel()` returns 0 outside a transaction and 1 for the outermost one. Inside a transaction a container owns (Spring), the outermost Diwan level is a savepoint, and the container keeps commit and rollback.
+
+### A failed statement on PostgreSQL
+
+PostgreSQL aborts the whole transaction when one statement in it fails, and refuses every later statement until you roll back. Diwan checks this itself. After a failed statement, the next statement, commit or savepoint release throws `IllegalStateException` with this message, and the first failure is its cause:
+
+```text
+The transaction was aborted by a failed statement; roll back (or roll back to the savepoint) first
+```
+
+A nested transaction (a savepoint) that rolls back clears the abort, so the outer transaction goes on. Rolling back the whole transaction clears it too. A `transaction` callback already rolls back when it throws, so you meet this only when your code catches a failure inside a transaction and carries on:
+
+=== "Java"
+
+    ```java
+    db.transaction(tx -> {
+        try {
+            tx.insert("insert into users (email) values (?)", "ada@example.org");   // duplicate: fails
+        } catch (UniqueConstraintViolationException e) {
+            // the transaction is aborted now
+        }
+        tx.insert("insert into logs (msg) values (?)", "retry");   // IllegalStateException
+        return null;
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { tx ->
+        try {
+            tx.insert("insert into users (email) values (?)", "ada@example.org")   // duplicate: fails
+        } catch (e: UniqueConstraintViolationException) {
+            // the transaction is aborted now
+        }
+        tx.insert("insert into logs (msg) values (?)", "retry")   // IllegalStateException
+        null
+    }
+    ```
+
+To keep going after an expected failure, run the risky statement in a nested `tx.transaction(...)`, so its savepoint rolls back and the outer transaction stays usable. Only a failure that carries a database SQL state marks the transaction aborted; a client-side failure, such as a value that cannot be read, does not. A driver reports this through `DriverCapability.ERROR_ABORTS_TRANSACTION`, which the PostgreSQL driver declares.
 
 ### Attempts
 

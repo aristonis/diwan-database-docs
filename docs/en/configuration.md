@@ -155,6 +155,9 @@ Driver `pgsql`. See also [connection keys](#connection-keys-all-drivers) for `ho
 | `search_path` | text | none | Added to the URL as `currentSchema`: the schema the session uses first. Skipped when the `url` already has `currentSchema`. |
 | `schema` | text | none | The same as `search_path`; used only when `search_path` is not set. |
 | `lock_wait` | duration: `5s`, `500ms` or digits as milliseconds | none | Adds `-c lock_timeout=<ms>` to the URL `options` parameter: how long a statement waits for a lock. Must be greater than 0 and at most 2147483647 ms, otherwise the connection throws. |
+| `timezone` | text | none | Sets the time zone of every session, as Laravel's `timezone` option does: an IANA name such as `UTC` or an offset such as `+03:00`. Diwan runs `SET TIME ZONE '<value>'` on each connection it hands out, whether the data source is built from the settings or supplied. A pool that resets sessions with `DISCARD ALL` or `RESET ALL` undoes it: set the zone in the pool's init SQL or on the server instead. Only letters, digits and `/ _ + - :` are accepted, otherwise the connection throws. Off by default. |
+
+With no `timezone`, PostgreSQL converts a value with the session zone, which follows the JVM. Store an `Instant` in a `timestamptz` column, which keeps the moment whatever the zone. To put `Instant` values into plain `timestamp` columns, set `timezone=UTC`: without it the stored wall time shifts by the JVM or session zone. Setting `timezone` also changes how the server prints `now()` and what a `timestamp` default holds.
 
 A `pgsql` connection also gets a migration lock, a session advisory lock that keeps two processes from migrating one database at once. It needs no key.
 
@@ -164,6 +167,7 @@ database.connections.main.url=jdbc:postgresql://db.internal:5432/shop
 database.connections.main.sslmode=require
 database.connections.main.search_path=app
 database.connections.main.lock_wait=10s
+database.connections.main.timezone=UTC
 ```
 
 ## Android
@@ -309,6 +313,7 @@ lock_wait: config/LockWaitOption.java:KEY,parseMillis; SQLiteConnector.java:164,
 transaction_mode: SQLiteConnector.java:65,150-161; AndroidConnector.java:46,104-121
 sslmode: PostgresConnector.java:103
 search_path: PostgresConnector.java:104
+timezone: PostgresConnector.java:132
 schema: PostgresConnector.java:106
 ${...} interpolation: config/ConfigInterpolator.java:resolve,substitute
 env name mapping: config/EnvConfigSource.java:65

@@ -80,6 +80,14 @@ On a model, write an `instant` column through `Casts.instant()`. For timestamp c
 (`created_at`, `updated_at`, `deleted_at`), set `TimestampFormat.INSTANT` on the model instead. See
 [Models](models.md#attributes-accessors-and-casts).
 
+### Dates and values on PostgreSQL
+
+- PostgreSQL keeps microseconds. A finer fraction is rounded to the nearest microsecond. The result is within one microsecond of the value you wrote.
+- Store an `Instant` in a `timestamptz` column. To store `Instant` values in plain `timestamp` columns, set `timezone=UTC` on the connection (see [Configuration](configuration.md#postgresql)); without it the value shifts by the JVM or session zone.
+- `timestamptz`, `timetz`, `infinity` and `-infinity` read back as `OffsetDateTime`, `OffsetTime` and the ends of time.
+- Reading `NaN` or `Infinity` from a `numeric` column fails with an error that names the column and never shows the value. A `float` or `double` column returns `NaN`.
+- A bare placeholder in `? is null` needs a cast on PostgreSQL: `?::text is null`.
+
 ## Modifiers
 
 === "Java"
