@@ -5,39 +5,39 @@
 
 === "Gradle (Kotlin)"
     ```kotlin
-    implementation("org.aristonis:diwan-database:0.3.1")
-    implementation("org.aristonis:diwan-database-android:0.3.1")
-    implementation("org.aristonis:diwan-database-sqlite:0.3.1")
-    implementation("org.aristonis:diwan-database-eloquent:0.3.1")   // only if you use models
+    implementation("org.aristonis:diwan-database:0.4.0")
+    implementation("org.aristonis:diwan-database-android:0.4.0")
+    implementation("org.aristonis:diwan-database-sqlite:0.4.0")
+    implementation("org.aristonis:diwan-database-eloquent:0.4.0")   // only if you use models
     ```
 === "Gradle (Groovy)"
     ```groovy
-    implementation 'org.aristonis:diwan-database:0.3.1'
-    implementation 'org.aristonis:diwan-database-android:0.3.1'
-    implementation 'org.aristonis:diwan-database-sqlite:0.3.1'
-    implementation 'org.aristonis:diwan-database-eloquent:0.3.1'   // only if you use models
+    implementation 'org.aristonis:diwan-database:0.4.0'
+    implementation 'org.aristonis:diwan-database-android:0.4.0'
+    implementation 'org.aristonis:diwan-database-sqlite:0.4.0'
+    implementation 'org.aristonis:diwan-database-eloquent:0.4.0'   // only if you use models
     ```
 === "Maven"
     ```xml
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database</artifactId>
-        <version>0.3.1</version>
+        <version>0.4.0</version>
     </dependency>
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-android</artifactId>
-        <version>0.3.1</version>
+        <version>0.4.0</version>
     </dependency>
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-sqlite</artifactId>
-        <version>0.3.1</version>
+        <version>0.4.0</version>
     </dependency>
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-eloquent</artifactId>
-        <version>0.3.1</version>
+        <version>0.4.0</version>
     </dependency>
     <!-- only if you use models -->
     ```
@@ -127,6 +127,15 @@
 يبدأ Diwan معاملات Android بـ `beginTransaction` الحصرية (exclusive)، أو بـ `beginTransactionNonExclusive` إذا ضبط الاتصال `transaction_mode` على `immediate` (انظر [الاتصالات](connections.md)). بلا write-ahead logging (WAL، سجل الكتابة المسبقة) تمنع transaction طويلة القراءات من threads أخرى.
 استدعِ `enableWriteAheadLogging()` في `onConfigure` كما أعلاه، وأبقِ المعاملات قصيرة.
 
+## المفاتيح الأجنبية المؤجلة والـ commit
+
+عندما يكون `defer_foreign_keys` و`foreign_keys` مفعّلين، يشغّل `commit()` أولًا `PRAGMA foreign_key_check`. ويحدث هذا عند الـ commit الخارجي فقط. إذا وجد الفحص مفتاحًا مكسورًا، تُعاد المعاملة إلى الوراء (rollback) ولا يبقى منها أي كتابة، ويرمي الـ commit `DriverException` من نوع المفتاح الأجنبي يسمّي الجدول الابن. بعد ذلك يستطيع الاتصال بدء معاملة جديدة.
+
+القيود:
+
+- المفتاح المعلن `DEFERRABLE INITIALLY DEFERRED` في DDL الخام لا يُفحص، لأن الفحص يعمل فقط عندما يكون `defer_foreign_keys` مفعّلًا.
+- الفحص يمسح قاعدة البيانات كلها. صف يتيم بقي من قبل المعاملة يُفشل الـ commit أيضًا.
+
 ## ما يحتاج Android أحدث
 
 يأتي Android بنسخة SQLite خاصة به، ونسختها تتبع مستوى الـ API.
@@ -135,6 +144,7 @@
 |---|---|---|
 | `upsert` (في query builder والنماذج) | SQLite 3.24، أي API 30 | `UnsupportedOperationException` تسمّي النسخة، قبل أي SQL |
 | right join | SQLite 3.39، أي API 34 | خطأ SQLite نفسه ضمن `QueryException` |
+| تفاصيل الأعمدة في `getColumns` (معلومات الأعمدة المولَّدة) | SQLite 3.26 | قائمة أعمدة عادية دون معلومات التوليد |
 | `insertOrIgnore` و`updateOrInsert` | أي نسخة | تعمل |
 
 `updateOrInsert` تقرأ ثم تكتب وليست ذرّية (atomic). على API 28 و29 اكتب قراءة ثم كتابة داخل transaction بدل `upsert`.
@@ -143,6 +153,7 @@
 
 عمود `decimal` له numeric affinity، فتُقرأ `10.10` على أنها العدد `10.1` من نوع double. للقيم الدقيقة استعمل عمودًا صحيحًا بمقياس ثابت، أو نصًا بتدريج ثابت.
 تُخزَّن التواريخ نصًا بصيغة `yyyy-MM-dd HH:mm:ss`، والـ `Instant` نصًا بتوقيت UTC أو ميكروثواني صحيحة، كما في SQLite على سطح المكتب.
+قيمة `OffsetTime` المربوطة تُخزَّن نصًا بتوقيت UTC بصيغة `HH:mm:ss+00:00`، على الاثنين.
 
 ## سجل الاستعلامات للتصحيح
 

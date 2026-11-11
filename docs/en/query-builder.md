@@ -322,6 +322,22 @@ To empty several tables at once, call `truncate` on the factory:
 
 An empty list runs nothing; a null or blank name throws. On PostgreSQL this is one `truncate ... restart identity` statement, and `cascade` is the native one. On SQLite and Android the rows are deleted children first, with the usual key actions (`cascadeOnDelete()`, `nullOnDelete()`). A `restrictOnDelete()` key between listed tables, a table that refers to itself included, is checked row by row, so outside a transaction those deletes run with foreign key enforcement switched off; no key action runs then, and before the commit any row outside the emptied tables that still points at one of them fails the truncate and undoes it. Inside a transaction SQLite cannot switch enforcement off, and a restrict key that refers to its own table still fails. `cascade` is emulated: every table that refers to the listed ones, directly or through other tables, is emptied too, children first, as PostgreSQL does; the emulation follows only tables that carry the connection prefix. The matching `sqlite_sequence` rows are reset, and a database that has no `sqlite_sequence` table is handled. Truncating one table with the builder is unchanged.
 
+To set the identity and `serial` counters of some tables back without emptying them, call `restartIdentities` on the factory:
+
+=== "Java"
+
+    ```java
+    query.restartIdentities(List.of("users", "posts"));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    query.restartIdentities(listOf("users", "posts"))
+    ```
+
+The next insert gets the id that follows the highest committed id, or the start value of an empty table. PostgreSQL never rolls a counter change back, so the reset stays even if the surrounding transaction is undone. An empty list runs nothing; a null or blank name throws. Only PostgreSQL sends anything, and it needs version 10 or later; SQLite and Android do nothing, because their counter rolls back with the rows. A sequence that no column of the tables owns is left alone. The rows are not touched. Call it only when no other session is writing to the tables: the counter can move back below an id that another open transaction already holds, and that transaction then fails on a duplicate key. For tests, see [Testing](testing.md#restart-identities).
+
 An update or delete may join other tables. On SQLite that needs a table with a rowid. Writes need a
 table, not a subquery or raw `from`.
 
@@ -462,6 +478,8 @@ table, not a subquery or raw `from`.
 `cursorPaginate` needs an `orderBy` and should order by columns that are never null, since a null
 can make it skip rows. Cursor tokens are not signed. A forged token cannot inject SQL, but it can
 ask for any rows the query already allows.
+
+A cursor value can be `null`, a string, a number, a boolean, a `UUID`, an `Instant`, or a `LocalDate`, `LocalTime`, `LocalDateTime`, `OffsetDateTime` or `OffsetTime`, so a PostgreSQL `timetz` column works as an order column.
 
 When a sort column comes from a user, check it against a fixed list before it reaches the builder:
 

@@ -3,6 +3,12 @@
 This page lists the changes between releases, with the steps to take.
 Start from [Getting started](getting-started.md).
 
+## 0.3.0 to 0.4.0
+
+Source compatible. `index()` and `unique()` now return an `IndexDefinition` where they returned
+`void`, so code that ignores the result compiles unchanged. Code compiled against 0.3.0 must be
+recompiled, because the method signature changed in the bytecode.
+
 ## 0.2.0 to 0.3.0
 
 No code change is needed: 0.3.0 only adds API. One behaviour changed, in a way a test may notice:
