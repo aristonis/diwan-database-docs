@@ -136,6 +136,48 @@ In truncate mode:
 - Internal tables are left alone: `spatial_ref_sys` on PostgreSQL, `android_metadata` and the FTS shadow tables on SQLite.
 - The extension fails with `IllegalStateException` under `ExecutionMode.CONCURRENT`. Use rollback mode, or mark the class `@Execution(ExecutionMode.SAME_THREAD)`.
 
+## Restart identities
+
+On PostgreSQL a rollback undoes the rows but not the sequence behind an `id`. Without the option, the ids a test gets depend on the tests that ran before it. `restartingIdentities()` sets the counters back before each test, so every test sees the same ids:
+
+=== "Java"
+
+    ```java
+    @RegisterExtension
+    static RefreshDatabase db = RefreshDatabase.rollback(
+            () -> PostgresQuery.of(CONNECTION), PostgresSchema::of,
+            List.of(new CreateUsersTable()))
+        .restartingIdentities();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    @JvmField
+    @RegisterExtension
+    val db: RefreshDatabase = RefreshDatabase.rollback(
+        { PostgresQuery.of(CONNECTION) }, PostgresSchema::of,
+        listOf(CreateUsersTable()))
+        .restartingIdentities()
+    ```
+
+Before each test, after the migrations and before the test's transaction opens, each identity and `serial` counter of the tables the extension owns is set to the value after its highest committed id, or to the start value when the table is empty. Rows that a migration or a seeder committed are kept, so the first row a test inserts gets the id after them. The reset is not rolled back, because PostgreSQL never rolls a sequence back.
+
+| | PostgreSQL | SQLite |
+|---|---|---|
+| Rollback alone | The counter keeps moving, so later tests get higher ids. | The counter rolls back with the rows, so ids repeat. |
+| With `restartingIdentities()` | Each test starts from the same counter. | Nothing is sent: the option does nothing. |
+
+The option has these limits:
+
+- It needs PostgreSQL 10 or later.
+- It sets only the sequences that a column of the tables owns, such as an identity column or a `serial` column. A sequence that no column owns, such as one created on its own and used as a default, is left alone.
+- Before each test it sends one query to list the owned sequences, then one query per sequence. It needs permission to change the sequence; the owner of the table has it.
+- It is refused with `IllegalStateException` in truncate mode, which already restarts identities.
+- It is refused under `ExecutionMode.CONCURRENT`, because the tests share the sequences. Mark the class `@Execution(ExecutionMode.SAME_THREAD)` instead.
+- The check sees one JVM. Gradle forks (`maxParallelForks` above 1) that share one database are not detected. Give each fork its own database.
+- Each test pays one catalog query plus one `setval` per sequence. Finding the highest id scans the table when the id column has no index, so keep the option for classes that name ids.
+
 ## Parameters
 
 A test method may declare these parameters, and the extension fills them:

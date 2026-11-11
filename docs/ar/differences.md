@@ -65,6 +65,7 @@
 - الفهارس الجزئية: `where` و`whereNull` و`whereNotNull` على الفهرس.
 - ترتيب الفهرس والـ collation: `asc` و`desc` و`collate` على الفهرس.
 - `DiwanError.table()`، أي الجدول الذي يخصّه الفشل.
+- `QueryFactory.restartIdentities(tables)` و`RefreshDatabase.rollback(...).restartingIdentities()`، وهما يعيدان عدّادات الهوية (identity) والـ `serial` في PostgreSQL إلى بدايتها، فترى اختبارات وضع rollback الأرقام نفسها في كل تشغيل. مصدر Laravel لا يحوي إعادة ضبط لكل اختبار: فالـ `setval` الوحيد فيه يضبط قيمة البداية عند إنشاء الجدول فقط.
 
 ## ليس في 0.2.0
 

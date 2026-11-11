@@ -136,6 +136,48 @@ PostgreSQL:
 - الجداول الداخلية تُترك: `spatial_ref_sys` على PostgreSQL، و`android_metadata` وجداول FTS المساعدة على SQLite.
 - يفشل الـ extension بـ `IllegalStateException` تحت `ExecutionMode.CONCURRENT`. استعمل وضع rollback، أو ضع على الصنف `@Execution(ExecutionMode.SAME_THREAD)`.
 
+## إعادة ضبط الهويات (restartingIdentities)
+
+على PostgreSQL يلغي rollback الصفوف لكن لا يلغي الـ sequence الذي يقف خلف `id`. بدون هذا الخيار تعتمد الأرقام التي يحصل عليها الاختبار على الاختبارات التي عملت قبله. يعيد `restartingIdentities()` العدّادات إلى بدايتها قبل كل اختبار، فيرى كل اختبار الأرقام نفسها:
+
+=== "Java"
+
+    ```java
+    @RegisterExtension
+    static RefreshDatabase db = RefreshDatabase.rollback(
+            () -> PostgresQuery.of(CONNECTION), PostgresSchema::of,
+            List.of(new CreateUsersTable()))
+        .restartingIdentities();
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    @JvmField
+    @RegisterExtension
+    val db: RefreshDatabase = RefreshDatabase.rollback(
+        { PostgresQuery.of(CONNECTION) }, PostgresSchema::of,
+        listOf(CreateUsersTable()))
+        .restartingIdentities()
+    ```
+
+قبل كل اختبار، بعد تطبيق الـ migrations وقبل أن تُفتح transaction الاختبار، يُضبط عدّاد كل هوية (identity) وكل عمود `serial` للجداول التي يملكها الـ extension على القيمة التي تلي أعلى id مُثبَّت، أو على قيمة البداية إن كان الجدول فارغًا. الصفوف التي ثبّتها migration أو seeder تبقى، فأول صف يُدرجه الاختبار يأخذ الـ id الذي يلي تلك الصفوف. لا يُلغى الضبط بالـ rollback، لأن PostgreSQL لا يتراجع عن الـ sequence أبدًا.
+
+| | PostgreSQL | SQLite |
+|---|---|---|
+| الـ rollback وحده | يستمر العدّاد في التقدم، فتحصل الاختبارات اللاحقة على أرقام أعلى. | يتراجع العدّاد مع الصفوف، فتتكرر الأرقام. |
+| مع `restartingIdentities()` | يبدأ كل اختبار من العدّاد نفسه. | لا يُرسل شيء: الخيار لا يفعل شيئًا. |
+
+لهذا الخيار الحدود التالية:
+
+- يحتاج إلى PostgreSQL بإصدار 10 أو أحدث.
+- يضبط فقط الـ sequences التي يملكها عمود من الجداول، مثل عمود الهوية (identity) أو عمود `serial`. الـ sequence الذي لا يملكه أي عمود، مثل واحد أُنشئ وحده واستُعمل كقيمة افتراضية، يُترك كما هو.
+- يرسل قبل كل اختبار استعلامًا لسرد الـ sequences التي يملكها، ثم استعلامًا لكل sequence. ويحتاج إلى صلاحية تغيير الـ sequence، ومالك الجدول يملكها.
+- يُرفض بـ `IllegalStateException` في وضع truncate، لأنه يعيد ضبط الهويات أصلًا.
+- يُرفض تحت `ExecutionMode.CONCURRENT`، لأن الاختبارات تشترك في الـ sequences. ضع على الصنف `@Execution(ExecutionMode.SAME_THREAD)` بدلًا من ذلك.
+- الفحص يرى JVM واحدة. لا تُكتشف forks الخاصة بـ Gradle (`maxParallelForks` أكبر من 1) التي تشترك في قاعدة بيانات واحدة. أعطِ كل fork قاعدة بيانات خاصة بها.
+- يدفع كل اختبار استعلامًا واحدًا على الـ catalog و`setval` واحدًا لكل sequence. البحث عن أعلى id يمسح الجدول كله إن لم يكن لعمود الـ id فهرس، فاستعمل الخيار في الأصناف التي تعتمد على أرقام الـ id فقط.
+
 ## المعاملات (Parameters)
 
 يستطيع أي اختبار أن يعلن هذه المعاملات، والـ extension يملؤها:

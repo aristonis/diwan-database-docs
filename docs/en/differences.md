@@ -65,6 +65,7 @@ Laravel has none of these:
 - Partial indexes: `where`, `whereNull` and `whereNotNull` on an index.
 - Index order and collation: `asc`, `desc` and `collate` on an index.
 - `DiwanError.table()`, the table a failure concerns.
+- `QueryFactory.restartIdentities(tables)` and `RefreshDatabase.rollback(...).restartingIdentities()`, which set PostgreSQL identity and `serial` counters back so rollback-mode tests see the same ids on every run. The Laravel database source has no per-test reset: its only `setval` sets a start value when a table is created.
 
 ## Not in 0.2.0
 
