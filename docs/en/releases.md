@@ -5,6 +5,21 @@ The full list of changes in each version is in the
 also has a page on [GitHub Releases](https://github.com/aristonis/diwan-database/releases), with the
 same notes and the release files.
 
+## 0.4.0 (2026-11-11)
+
+Schema, migrations and test support. Code compiled against 0.3.x must be recompiled; see the
+[upgrade guide](upgrade.md). It adds:
+
+- **Schema:** inspection (`getColumns`, `hasColumns`, `getIndexListing`, `hasIndex`), partial and
+  ordered indexes, `rawIndex`, temporary tables, table comments and `foreignIdFor`. See
+  [Schema](schema.md).
+- **Migrations:** SQLite and Android file databases are locked while migrating. See
+  [Migrations](migrations.md).
+- **Testing:** rollback mode can restart PostgreSQL identities; template mode gives each test its
+  own database copy; `Schema.createDatabase` and `dropDatabaseIfExists`. See [Testing](testing.md).
+- **Fixes:** PostgreSQL aborted transactions fail clearly; an Android deferred-key commit rolls
+  back; `OffsetTime` values; `DiwanError.table()`. See [Errors](errors.md).
+
 ## 0.3.1 (2026-11-09)
 
 A fix release for 0.3.0. Nothing breaks.

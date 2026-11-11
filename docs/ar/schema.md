@@ -56,6 +56,66 @@
 
 الدالتان `create` و`table` تأخذان `Consumer<Blueprint>`. حين يحتاج استدعاء واحد إلى عدة جمل (جدول مع unique index)، تنفذها SQLite داخل transaction (معاملة) واحدة، فلا يبقى شيء ناقص عند الفشل. بادئة الجداول (table prefix) في الاتصال توضع قبل كل جدول وكل اسم index مولَّد.
 
+### الجداول المؤقتة (Temporary tables)
+
+=== "Java"
+
+    ```java
+    db.transaction(tx -> {
+        schema.on(tx).create("staging", table -> {
+            table.temporary();
+            table.id();
+            table.string("label");
+        });
+        tx.insert("insert into staging (label) values (?)", "first");
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { tx ->
+        schema.on(tx).create("staging") { table ->
+            table.temporary()
+            table.id()
+            table.string("label")
+        }
+        tx.insert("insert into staging (label) values (?)", "first")
+    }
+    ```
+
+`table.temporary()` داخل `create` تجعل الجدول مؤقتًا: تُكتب `create temporary table` على SQLite وPostgreSQL، وتحذفه قاعدة البيانات حين يُغلق اتصاله. خارج `create` ترمي الدالة `IllegalStateException`. و`table.isTemporary()` تعيد `true` إذا ضُبط هذا العلَم على الـ `Blueprint` (مخطط الجدول).
+
+الجدول المؤقت يعيش على اتصال واحد، فأنشئه واستعمله على الاتصال نفسه. استعمله داخل transaction (معاملة)، أو على قاعدة بيانات تحتفظ باتصال واحد فقط، مثل قاعدة SQLite في الذاكرة. وقاعدة SQLite على ملف تفتح اتصالًا جديدًا لكل استعمال خارج المعاملة، فالجدول الذي أُنشئ في استعمال لا يكون موجودًا في الاستعمال التالي. وعلى PostgreSQL لا يراه إلا الجلسة التي أنشأته، ويبقى بعد commit (تثبيت المعاملة).
+
+على SQLite يستطيع `schema.table` على جدول مؤقت إضافة عمود أو فهرس. أما التغيير الذي يحتاج إعادة بناء الجدول، مثل حذف عمود أو `change()`، فيرمي `IllegalStateException`. أما `schema.drop` و`dropIfExists` فتعملان كالمعتاد.
+
+فحص PostgreSQL لا يرى الجدول المؤقت: تبحث `hasTable` و`getTables` في الـ schemas العادية فقط، لا في `pg_temp`، فتعيد `hasTable` القيمة `false` له.
+
+### تعليقات الجدول (Table comments)
+
+=== "Java"
+
+    ```java
+    schema.create("posts", table -> {
+        table.id();
+        table.comment("Blog posts, one row per post");
+    });
+    schema.table("posts", table -> table.comment("Published posts"));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.create("posts") { table ->
+        table.id()
+        table.comment("Blog posts, one row per post")
+    }
+    schema.table("posts") { table -> table.comment("Published posts") }
+    ```
+
+`comment(text)` تضبط تعليق الجدول، عند الإنشاء أو التغيير. تكتبه PostgreSQL بجملة `comment on table`، وتُضاعَف علامات الاقتباس داخل النص، والنص الفارغ يحذف التعليق. أما SQLite فلا تملك تعليقات للجداول، فالدالة لا تكتب شيئًا ولا ترمي خطأً.
+
 ## أنواع الأعمدة
 
 الأسماء التي تتعارض مع كلمات Java المحجوزة لها لاحقة: `booleanColumn` و`floatColumn` و`doubleColumn` و`charColumn` و`enumColumn`. و`default` في Laravel هي `defaultValue`.
@@ -72,6 +132,14 @@
 
 العمود `instant` يخزن microseconds كاملة على SQLite و`timestamptz` على PostgreSQL، وتحوّل بـ `Instants.toMicros` و`Instants.read`. SQLite ليس فيها ما يشبه `set`، فترفض هذا النوع.
 في النموذج اكتب العمود `instant` عبر `Casts.instant()`. أما أعمدة الطوابع (`created_at` و`updated_at` و`deleted_at`) فاضبط `TimestampFormat.INSTANT` على النموذج بدلًا من ذلك. انظر [النماذج](models.md#accessors-casts).
+
+### التواريخ والقيم على PostgreSQL
+
+- تحتفظ PostgreSQL بالـ microseconds. الكسر الأدق يُقرَّب إلى أقرب microsecond، فتبعد النتيجة عن القيمة التي كتبتها بأقل من أو بمقدار microsecond واحدة.
+- خزّن `Instant` في عمود `timestamptz`. ولتخزين قيم `Instant` في أعمدة `timestamp` العادية اضبط `timezone=UTC` على الاتصال (انظر [الإعدادات](configuration.md#postgresql))؛ بدونه تتزحزح القيمة بمنطقة الـ JVM أو الجلسة.
+- `timestamptz` و`timetz` و`infinity` و`-infinity` تُقرأ `OffsetDateTime` و`OffsetTime` وطرفي الزمن.
+- قراءة `NaN` أو `Infinity` من عمود `numeric` تفشل بخطأ يسمّي العمود ولا يعرض القيمة. أما عمود `float` أو `double` فيعيد `NaN`.
+- العلامة `?` وحدها في `? is null` تحتاج cast على PostgreSQL: `?::text is null`.
 
 ## المعدّلات (Modifiers)
 
@@ -161,6 +229,68 @@
     table.renameIndex("old_name", "new_name")
     ```
 
+### الفهارس الجزئية (Partial indexes)
+
+تعيد `index` و`unique` قيمة `IndexDefinition`. استدعِ عليها `where` أو `whereNull` أو `whereNotNull` لتفهرس الصفوف المطابقة فقط. تُربط الشروط المتعددة بـ `and`.
+
+=== "Java"
+
+    ```java
+    table.index(List.of("id"), "attempts_started").where("outcome", "STARTED");
+    table.unique(List.of("email"), "users_email_live").whereNull("deleted_at");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index(listOf("id"), "attempts_started").where("outcome", "STARTED")
+    table.unique(listOf("email"), "users_email_live").whereNull("deleted_at")
+    ```
+
+`where(column, value)` تقارن عمودًا بقيمة. القيمة تكون نصًا أو قيمة منطقية أو رقمًا منتهيًا أو `null`، وتعني `null` الدالة `whereNull`. أي نوع آخر يُرفض عند الاستدعاء. لا يلزم أن يكون عمود الشرط من أعمدة الفهرس. أما `.index()` و`.unique()` على مستوى العمود فلا تأخذان شرطًا.
+
+على PostgreSQL الفهرس الفريد الجزئي هو فهرس فريد، وليس قيد unique. تحذف `dropUnique(name)` أيًّا منهما الموجود بهذا الاسم. وعلى SQLite تحتفظ إعادة بناء الجدول بكل فهرس جزئي مع شرطه.
+
+### ترتيب الفهرس والـ collation
+
+تحدد `asc` و`desc` و`collate` على `IndexDefinition` ترتيب العمود المفهرس ومقارنته. يجب أن يكون العمود من أعمدة الفهرس، وإلا رمى الاستدعاء `IllegalArgumentException`. ويبقى اسم الفهرس الافتراضي مكوّنًا من أسماء الأعمدة فقط.
+
+=== "Java"
+
+    ```java
+    table.index(List.of("module_id", "id"), "latest_per_module").desc("id");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index(listOf("module_id", "id"), "latest_per_module").desc("id")
+    ```
+
+`collate(column, name)` يأخذ اسم collation تعرفه قاعدة البيانات، مثل `NOCASE` على SQLite، ويُكتب كما هو. اربط الاستدعاءات: `table.index(...).where(...).desc(...)`. وتحتفظ إعادة بناء الجدول على SQLite بالترتيب التنازلي وبالـ collation.
+
+### فهارس التعبير الخام (Raw expression indexes)
+
+`rawIndex(expression, name)` تضيف فهرسًا عموده تعبير SQL، يُكتب في الجملة كما هو دون تهريب. الاسم إلزامي ولا يكون فارغًا. تعيد الدالة `IndexDefinition`، فتستدعي عليها `where` أو `whereNull` أو `whereNotNull` لفهرس جزئي. ضع الترتيب والـ collation داخل التعبير نفسه: `asc` و`desc` و`collate` ترمي `IllegalStateException` على الفهرس الخام.
+
+=== "Java"
+
+    ```java
+    table.rawIndex("lower(email)", "users_email_lower");
+    table.rawIndex("lower(email)", "users_email_live_lower").whereNull("deleted_at");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.rawIndex("lower(email)", "users_email_lower")
+    table.rawIndex("lower(email)", "users_email_live_lower").whereNull("deleted_at")
+    ```
+
+التعبير SQL خام، فابنِه من ثوابت، لا من مدخلات المستخدم. التعبير الذي يأتي من مدخلات المستخدم ثغرة لحقن SQL.
+
+على SQLite تحتفظ إعادة بناء الجدول بالفهرس، فتُعاد كتابة النص الذي خزّنته قاعدة البيانات. وتُرفض إعادة البناء التي تحذف عمودًا أو تعيد تسميته يذكره التعبير، وكذلك `renameIndex` على فهرس خام: احذف الفهرس وأعد إضافته بـ `rawIndex` ليأخذ الاسم الجديد. و`dropIndex` تحذفه على القاعدتين.
+
 ## المفاتيح الأجنبية (Foreign keys)
 
 === "Java"
@@ -203,6 +333,26 @@
     table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values")
     ```
 
+### عمود لمفتاح نموذج (foreignIdFor)
+
+`foreignIdFor(source)` تضيف العمود الذي يشير إلى مفتاح جدول آخر، وتسمّيه من المصدر: `user_id` لمفتاح المستخدم. نوع العمود يتبع المفتاح: عدد صحيح كبير غير موقّع (كما تفعل `foreignId`) لمفتاح صحيح، وعمود `uuid` لمفتاح UUID، وعمود `char` بطول 26 لمفتاح ULID. الدالة لا تضيف مفتاحًا أجنبيًا؛ تضيفه `constrained()`، فتشير إلى جدول المصدر ومفتاحه. و`constrained("teams")` تشير إلى جدول آخر مع الإبقاء على عمود مفتاح المصدر بدل `id`. والوسيط الثاني يسمّي العمود.
+
+=== "Java"
+
+    ```java
+    table.foreignIdFor(ModelKeys.of(User.class)).constrained().cascadeOnDelete();   // user_id -> users.id
+    table.foreignIdFor(ModelKeys.of(Team.class), "owner_team_id").nullable();      // no foreign key
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.foreignIdFor(ModelKeys.of(User::class.java)).constrained().cascadeOnDelete()   // user_id -> users.id
+    table.foreignIdFor(ModelKeys.of(Team::class.java), "owner_team_id").nullable()      // no foreign key
+    ```
+
+`ModelKeys` في الوحدة `diwan-database-eloquent`. `ModelKeys.of(User.class)` تقرأ الجدول والمفتاح ونوعه من نموذج مسجَّل، و`ModelKeys.of(user)` تقرأها من نسخة. النموذج بلا مفتاح أساسي يُرفض بـ `IllegalArgumentException`، والصنف غير المسجَّل بـ `UnregisteredModelException`. يُقرأ اسم الجدول بلا بادئة الاتصال، ومخطط الجدول يضيفها مرة واحدة. تأخذ `foreignIdFor` قيمة `ForeignKeySource`، وهي الواجهة التي تنفذها `ModelKeys`، ويمكن لأي مفتاح ليس نموذجًا أن ينفذها.
+
 ## قيود check والأعمدة المولَّدة وSQL الخام
 
 === "Java"
@@ -231,7 +381,7 @@
     schema.statement("create index lines_total on lines (total)")
     ```
 
-الـ SQL الذي تعطيه لـ `check` و`storedAs` و`virtualAs` و`rawColumn` و`statement` يدخل الجملة كما كُتب. ابنِه من ثوابت، لا من مدخلات المستخدم. أسماء الجداول والأعمدة حالة مختلفة: علامات الاقتباس داخل الاسم تُهرَّب، ولا يُرفض إلا الاسم الفارغ والاسم الذي فيه محارف تحكم. استخدم `schema.driverName()` (تعيد `"sqlite"` أو `"pgsql"`) حين يختلف الـ SQL الخام بين القواعد.
+الـ SQL الذي تعطيه لـ `check` و`storedAs` و`virtualAs` و`rawColumn` و`rawIndex` و`statement` يدخل الجملة كما كُتب. ابنِه من ثوابت، لا من مدخلات المستخدم. أسماء الجداول والأعمدة حالة مختلفة: علامات الاقتباس داخل الاسم تُهرَّب، ولا يُرفض إلا الاسم الفارغ والاسم الذي فيه محارف تحكم. استخدم `schema.driverName()` (تعيد `"sqlite"` أو `"pgsql"`) حين يختلف الـ SQL الخام بين القواعد.
 
 ## إعادة بناء الجدول على SQLite
 
@@ -269,6 +419,64 @@ SQLite لا تستطيع إضافة primary key (مفتاح أساسي) أو for
     }
     ```
 
+يضيف `IndexInfo` أيضًا `orders()` (`asc` أو `desc` لكل عمود)، و`collations()` (نص فارغ للافتراضي)، و`where()` وهي `Optional` فيها نص شرط الفهرس الجزئي. النص من قاعدة البيانات نفسها، وPostgreSQL يعيد كتابته، فقارِن النصوص داخل قاعدة بيانات واحدة فقط.
+
+### الأعمدة وفحص الفهارس
+
+=== "Java"
+
+    ```java
+    for (ColumnInfo column : schema.getColumns("users")) {
+        System.out.println(column.name() + " " + column.type() + " nullable=" + column.isNullable());
+    }
+    List<String> names = schema.getColumnListing("users");           // names, in column order
+    boolean hasBoth = schema.hasColumns("users", List.of("id", "email"));
+
+    List<String> indexNames = schema.getIndexListing("users");       // lower case
+    boolean byName = schema.hasIndex("users", "users_email_unique");
+    boolean byColumns = schema.hasIndex("users", List.of("email"), IndexType.UNIQUE);
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    for (column in schema.getColumns("users")) {
+        println("${column.name()} ${column.type()} nullable=${column.isNullable()}")
+    }
+    val names = schema.getColumnListing("users")           // names, in column order
+    val hasBoth = schema.hasColumns("users", listOf("id", "email"))
+
+    val indexNames = schema.getIndexListing("users")       // lower case
+    val byName = schema.hasIndex("users", "users_email_unique")
+    val byColumns = schema.hasIndex("users", listOf("email"), IndexType.UNIQUE)
+    ```
+
+تعيد `getColumns` كائن `ColumnInfo` واحدًا لكل عمود بترتيب الأعمدة، لجدول أو view. والجدول غير الموجود يعطي قائمة فارغة. `ColumnInfo` قيمة غير قابلة للتعديل:
+
+| الدالة | ما تعيده |
+|---|---|
+| `name()` | اسم العمود. |
+| `typeName()` | النوع الأساسي بأحرف صغيرة، مثل `varchar`. |
+| `type()` | النوع الكامل بأحرف صغيرة، مثل `varchar(255)`. |
+| `collation()` | `Optional` فيها اسم الـ collation؛ فارغة للافتراضي. |
+| `isNullable()` | هل يقبل العمود `NULL`. |
+| `defaultValue()` | `Optional` فيها القيمة الافتراضية نص SQL خامًا؛ فارغة إن لم توجد. |
+| `isAutoIncrement()` | هل تملأ قاعدة البيانات العمود بالرقم التالي. |
+| `comment()` | `Optional` فيها تعليق العمود. |
+| `generation()` | `Optional<ColumnGeneration>` للعمود المولَّد (generated): فيها `isStored()` و`expression()`. |
+
+- **SQLite وAndroid:** `type()` هو نص النوع المعلن بأحرف صغيرة، كما كُتب في جملة `create table`. لا يُعدّ العمود auto-increment إلا إذا كان مفتاحًا أساسيًا صحيحًا من عمود واحد، ويشمل ذلك `integer primary key desc`. و`comment()` فارغة دائمًا. أعمدة الجدول الافتراضي (virtual table) المخفية لا تُسرد. ويُقرأ الـ collation وتعبير التوليد من SQL إنشاء الجدول. الأعمدة المولَّدة تحتاج SQLite 3.31؛ وعلى SQLite الأقدم من 3.26 تكون القائمة عادية دون معلومات التوليد.
+- **PostgreSQL:** `type()` هو النوع بصيغة قاعدة البيانات نفسها، مثل `character varying(255)`، و`typeName()` هو الاسم الداخلي للنوع، مثل `varchar`؛ وأنواع المصفوفات تبدأ بشرطة سفلية، مثل `_int4`. يكون العمود auto-increment إذا بدأ default بـ `nextval(` أو كان عمود identity. وللعمود المولَّد يكون الـ default فارغًا ويكون التعبير في `generation()`. الأعمدة المحذوفة لا تُسرد أبدًا. قبل PostgreSQL 12 لا توجد معلومات التوليد، وقبل 10 لا توجد معلومات identity.
+
+`getColumnListing` تعيد الأسماء فقط. و`hasColumns` تعيد `true` فقط إذا وُجدت كل الأسماء، مع تجاهل حالة الأحرف؛ والقائمة الفارغة تعطي `true`.
+
+`getIndexListing` تعيد أسماء الفهارس بأحرف صغيرة، فاسم فهرس PostgreSQL المقتبس بأحرف مختلطة لا يُعاد كما كُتب. و`hasIndex` تأخذ اسم فهرس أو قائمة أعمدة، مع `IndexType` اختياري (`PRIMARY` أو `UNIQUE`). و`UNIQUE` تطابق المفتاح الأساسي أيضًا، كما في Laravel. مثال:
+
+- الاسم يُقارَن مع تجاهل حالة الأحرف.
+- قائمة الأعمدة يجب أن تطابق أعمدة الفهرس بالترتيب نفسه، مع تجاهل حالة الأحرف.
+- `IndexType.PRIMARY` يطابق المفتاح الأساسي فقط. و`IndexType.UNIQUE` يطابق أي فهرس unique، والمفتاح الأساسي يُعدّ منها.
+- المفتاح الأساسي يظهر فهرسًا في القاعدتين؛ وSQLite تسمّيه `primary`.
+
 ### سرد كل شيء وحذفه
 
 === "Java"
@@ -300,6 +508,57 @@ SQLite لا تستطيع إضافة primary key (مفتاح أساسي) أو for
 
 الدالة `Migrator.fresh()` تستعمل هذه الاستدعاءات: انظر [الـ Migrations](migrations.md#start-from-scratch).
 
+## إنشاء قاعدة بيانات وحذفها
+
+تعمل `createDatabase` و`dropDatabaseIfExists` على الخادم الذي يتصل به الـ schema. في PostgreSQL استعمل schema على اتصال بقاعدة صيانة مثل `postgres`. الاسم هو اسم قاعدة البيانات في PostgreSQL، وهو مسار ملف في SQLite. تضع الـ grammar علامات الاقتباس حول كل اسم في PostgreSQL، فلا يُدمج الاسم في الـ SQL كنص خام.
+
+=== "Java"
+
+    ```java
+    Schema server = manager.schema("server");   // a connection to the maintenance database
+
+    server.createDatabase("shop_test");
+    server.createDatabase("shop_copy", "shop_template");
+    server.createDatabase("shop_fast", "shop_template", CopyStrategy.WAL_LOG);
+
+    boolean existed = server.dropDatabaseIfExists("shop_test");   // false when it was absent
+    server.dropDatabaseIfExists("shop_fast", true);               // with (force): ends sessions first
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val server = manager.schema("server")   // a connection to the maintenance database
+
+    server.createDatabase("shop_test")
+    server.createDatabase("shop_copy", "shop_template")
+    server.createDatabase("shop_fast", "shop_template", CopyStrategy.WAL_LOG)
+
+    val existed = server.dropDatabaseIfExists("shop_test")   // false when it was absent
+    server.dropDatabaseIfExists("shop_fast", true)           // with (force): ends sessions first
+    ```
+
+| الدالة | PostgreSQL | SQLite |
+|---|---|---|
+| `createDatabase(name)` | `create database` بلا جملة encoding، فتأخذ قاعدة البيانات الترميز الافتراضي للخادم. | تنشئ ملفًا فارغًا. لا يُستبدل الملف الموجود، وتفشل الدالة. |
+| `createDatabase(name, template)` | تضيف `template`، فتصبح قاعدة البيانات الجديدة نسخة من القالب. | تنسخ ملف القالب. |
+| `createDatabase(name, template, strategy)` | تضيف `strategy file_copy` أو `strategy wal_log`. تحتاج PostgreSQL 15 أو أحدث. | تُتجاهل، فنسخ الملف لا يملك strategy. |
+| `dropDatabaseIfExists(name)` | `drop database if exists`. تعيد `true` إن كانت قاعدة البيانات موجودة. | تحذف الملف وملفات `-wal` و`-shm` و`-journal` الخاصة به. تعيد `true` إن كان الملف الرئيسي موجودًا. |
+| `dropDatabaseIfExists(name, force)` | تضيف `with (force)` التي تنهي الجلسات المتصلة بقاعدة البيانات أولًا. تحتاج PostgreSQL 13 أو أحدث. | تُتجاهل، فلا جلسات في SQLite تُنهى. |
+
+قاعدة البيانات غير الموجودة ليست خطأ: تعيد `dropDatabaseIfExists` القيمة `false`. الاسم الفارغ أو المكوّن من مسافات فقط، والقالب الفارغ، يرميان `IllegalArgumentException`. إذا كان الخادم أقدم مما يتطلبه `strategy` أو `force`، ترمي الدالة `UnsupportedOperationException` التي تسمّي إصدار الخادم، قبل أن تنشئ شيئًا أو تحذفه.
+
+لـ `CopyStrategy` قيمتان. `FILE_COPY` تنسخ ملفات القالب وتفرض نقطتي checkpoint. أما `WAL_LOG` فتعيد تشغيل القالب عبر سجل الكتابة المسبقة (WAL) بلا checkpoint، لكنها تكتب سجلًا أكبر. وتنسخ PostgreSQL القالب فقط حين لا تكون أي جلسة أخرى متصلة به، ويحتاج الدور إلى صلاحية `CREATEDB`.
+
+على SQLite:
+
+- الاسم `:memory:`، أو أي صيغة أخرى لقاعدة في الذاكرة، يُرفض بـ `IllegalArgumentException`: لا ملف هناك لينشأ أو يُحذف.
+- يُنسخ ملف القالب وحده، ولا يُنسخ ملف `.migrate.lock` الخاص به.
+- القالب في وضع WAL يجب أن يُفرَّغ قبل النسخ بـ `pragma wal_checkpoint(TRUNCATE)`. تنسخ العملية الملف الرئيسي وحده، فالصفوف التي ما زالت في ملف `-wal` تغيب عن النسخة.
+- النسخة التي تفشل في منتصفها تحذف الملف الجزئي الذي أنشأته، فلا يجد استدعاء لاحق قاعدة مقطوعة.
+
+تحت وضع `pretend` (المعاينة)، تسجّل PostgreSQL الجملة ولا تغيّر شيئًا، وتعيد `dropDatabaseIfExists` القيمة `false`. لا تملك SQLite جملة SQL تُسجَّل، فتطلق الدالتان `UnsupportedOperationException` هناك.
+
 ## معاينة الـ SQL
 
 === "Java"
@@ -314,7 +573,7 @@ SQLite لا تستطيع إضافة primary key (مفتاح أساسي) أو for
     val plan = schema.pretend { s -> s.create("t") { table -> table.id() } }
     ```
 
-`pretend` تسرد الجمل ولا تغير شيئًا. هي تقرأ الجداول الحية، فتعرض إعادة البناء بجملها الحقيقية، لكن الجدول الذي أُنشئ قبلها في نفس تشغيل pretend (وضع المعاينة دون تنفيذ) لا يكون موجودًا بالنسبة لها. و`hasTable` و`hasColumn` تعيدان `false` في وضع pretend.
+`pretend` تسرد الجمل ولا تغير شيئًا. هي تقرأ الجداول الحية، فتعرض إعادة البناء بجملها الحقيقية، لكن الجدول الذي أُنشئ قبلها في نفس تشغيل pretend (وضع المعاينة دون تنفيذ) لا يكون موجودًا بالنسبة لها. و`hasTable` و`hasColumn` تعيدان `false` في وضع pretend. أما `getColumns` و`getColumnListing` و`hasColumns` و`getIndexListing` و`hasIndex` فتقرأ المخطط الحي، حتى في وضع pretend.
 
 داخل transaction (معاملة) استدعِ `schema.on(tx)` حتى يعمل العمل على المعاملة: `schema.on(tx).create(...)`.
 

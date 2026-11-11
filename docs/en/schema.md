@@ -59,6 +59,66 @@ grammar of your database turns it into SQL.
 and its unique index), SQLite runs them in one transaction, so a failure leaves nothing behind. The
 connection's table prefix goes in front of every table and generated index name.
 
+### Temporary tables
+
+=== "Java"
+
+    ```java
+    db.transaction(tx -> {
+        schema.on(tx).create("staging", table -> {
+            table.temporary();
+            table.id();
+            table.string("label");
+        });
+        tx.insert("insert into staging (label) values (?)", "first");
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { tx ->
+        schema.on(tx).create("staging") { table ->
+            table.temporary()
+            table.id()
+            table.string("label")
+        }
+        tx.insert("insert into staging (label) values (?)", "first")
+    }
+    ```
+
+`table.temporary()` in `create` makes a temporary table: `create temporary table` on SQLite and PostgreSQL. The database drops it when its connection closes. Outside `create`, the call throws `IllegalStateException`. `table.isTemporary()` tells whether the blueprint has the flag.
+
+A temporary table lives on one connection, so create it and use it on the same connection. Use it inside a transaction, or on a database that keeps a single connection, such as an in-memory SQLite database. A SQLite file database opens a new connection for each use outside a transaction, so a table created in one use is not there in the next. On PostgreSQL only the session that created the table sees it, and it survives the commit of its transaction.
+
+On SQLite `schema.table` on a temporary table can add a column or an index. A change that needs a table rebuild, such as dropping a column or `change()`, throws `IllegalStateException`. `schema.drop` and `dropIfExists` still work.
+
+PostgreSQL inspection does not see a temporary table. `hasTable` and `getTables` search only the ordinary schemas, not `pg_temp`, so `hasTable` returns `false` for it.
+
+### Table comments
+
+=== "Java"
+
+    ```java
+    schema.create("posts", table -> {
+        table.id();
+        table.comment("Blog posts, one row per post");
+    });
+    schema.table("posts", table -> table.comment("Published posts"));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.create("posts") { table ->
+        table.id()
+        table.comment("Blog posts, one row per post")
+    }
+    schema.table("posts") { table -> table.comment("Published posts") }
+    ```
+
+`comment(text)` sets the comment of the table, on create or on change. PostgreSQL writes it with `comment on table`, with quotes in the text doubled. An empty text removes the comment. SQLite has no table comments: the call writes nothing and raises no error.
+
 ## Column types
 
 Names that clash with Java keywords carry a suffix: `booleanColumn`, `floatColumn`, `doubleColumn`,
@@ -79,6 +139,14 @@ Names that clash with Java keywords carry a suffix: `booleanColumn`, `floatColum
 On a model, write an `instant` column through `Casts.instant()`. For timestamp columns
 (`created_at`, `updated_at`, `deleted_at`), set `TimestampFormat.INSTANT` on the model instead. See
 [Models](models.md#attributes-accessors-and-casts).
+
+### Dates and values on PostgreSQL
+
+- PostgreSQL keeps microseconds. A finer fraction is rounded to the nearest microsecond. The result is within one microsecond of the value you wrote.
+- Store an `Instant` in a `timestamptz` column. To store `Instant` values in plain `timestamp` columns, set `timezone=UTC` on the connection (see [Configuration](configuration.md#postgresql)); without it the value shifts by the JVM or session zone.
+- `timestamptz`, `timetz`, `infinity` and `-infinity` read back as `OffsetDateTime`, `OffsetTime` and the ends of time.
+- Reading `NaN` or `Infinity` from a `numeric` column fails with an error that names the column and never shows the value. A `float` or `double` column returns `NaN`.
+- A bare placeholder in `? is null` needs a cast on PostgreSQL: `?::text is null`.
 
 ## Modifiers
 
@@ -178,6 +246,78 @@ still uses cannot be dropped, so drop the index or key first, in the same call i
     table.renameIndex("old_name", "new_name")
     ```
 
+### Partial indexes
+
+`index` and `unique` return an `IndexDefinition`. Call `where`, `whereNull` or `whereNotNull` on it to
+index only the rows that match. Several conditions are joined with `and`.
+
+=== "Java"
+
+    ```java
+    table.index(List.of("id"), "attempts_started").where("outcome", "STARTED");
+    table.unique(List.of("email"), "users_email_live").whereNull("deleted_at");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index(listOf("id"), "attempts_started").where("outcome", "STARTED")
+    table.unique(listOf("email"), "users_email_live").whereNull("deleted_at")
+    ```
+
+`where(column, value)` compares a column with a value. The value can be text, a boolean, a finite
+number or `null`, and `null` means `whereNull`. Any other type is refused when you make the call. The
+column in a condition need not be one of the index's columns. Column-level `.index()` and `.unique()`
+take no condition.
+
+On PostgreSQL a partial unique index is a unique index, not a unique constraint. `dropUnique(name)`
+drops whichever of the two exists under that name. On SQLite a table rebuild keeps each partial index
+with its condition.
+
+### Index order and collation
+
+`asc`, `desc` and `collate` on an `IndexDefinition` set how an indexed column is sorted and compared.
+The column must be one of the index's columns, or the call throws `IllegalArgumentException`. The
+default index name still uses only the column names.
+
+=== "Java"
+
+    ```java
+    table.index(List.of("module_id", "id"), "latest_per_module").desc("id");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.index(listOf("module_id", "id"), "latest_per_module").desc("id")
+    ```
+
+`collate(column, name)` takes a collation name the database knows, such as `NOCASE` on SQLite, and
+writes it as given. Chain the calls: `table.index(...).where(...).desc(...)`. A SQLite table rebuild
+keeps descending order and collations.
+
+### Raw expression indexes
+
+`rawIndex(expression, name)` adds an index whose column is an SQL expression, written into the statement as it is. The name is required and must not be blank. The call returns the index definition, so `where`, `whereNull` and `whereNotNull` make a partial index. Put the order and the collation inside the expression: `asc`, `desc` and `collate` throw `IllegalStateException` on a raw index.
+
+=== "Java"
+
+    ```java
+    table.rawIndex("lower(email)", "users_email_lower");
+    table.rawIndex("lower(email)", "users_email_live_lower").whereNull("deleted_at");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.rawIndex("lower(email)", "users_email_lower")
+    table.rawIndex("lower(email)", "users_email_live_lower").whereNull("deleted_at")
+    ```
+
+The expression is raw SQL. It is not quoted, so build it from constants, never from user input. An expression that comes from input is an SQL injection point.
+
+On SQLite a table rebuild keeps the index, with the text the database stored. A rebuild that drops or renames a column the expression names is refused, and so is `renameIndex` on a raw index: drop the index and add it again with `rawIndex` to rename it. `dropIndex` drops it on both databases.
+
 ## Foreign keys
 
 === "Java"
@@ -223,6 +363,26 @@ Name the key yourself with the third argument of `constrained`, or with the seco
     table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values")
     ```
 
+### Columns for a model's key
+
+`foreignIdFor(source)` adds the column that points at another table's key, and names it after the source: `user_id` for a user. The column type follows the key. An integer key gives an unsigned big integer, as `foreignId` does; a UUID key gives a `uuid` column; a ULID key gives a 26-character `char` column. The call adds no foreign key. `constrained()` adds one that references the source's table and key column. `constrained("teams")` names another table but keeps the source's key column instead of `id`. A second argument names the column.
+
+=== "Java"
+
+    ```java
+    table.foreignIdFor(ModelKeys.of(User.class)).constrained().cascadeOnDelete();   // user_id -> users.id
+    table.foreignIdFor(ModelKeys.of(Team.class), "owner_team_id").nullable();      // no foreign key
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.foreignIdFor(ModelKeys.of(User::class.java)).constrained().cascadeOnDelete()   // user_id -> users.id
+    table.foreignIdFor(ModelKeys.of(Team::class.java), "owner_team_id").nullable()      // no foreign key
+    ```
+
+`ModelKeys` is in the `diwan-database-eloquent` artifact. `ModelKeys.of(User.class)` reads the table, key and key kind of a registered model; `ModelKeys.of(user)` reads them from an instance. A model with no primary key is refused with `IllegalArgumentException`, and an unregistered class with `UnregisteredModelException`. The table name is read without the connection's prefix, which the blueprint adds once. `foreignIdFor` takes a `ForeignKeySource`, the interface `ModelKeys` implements; a key that is not a model can implement it too.
+
 ## Check constraints, generated columns and raw SQL
 
 === "Java"
@@ -251,8 +411,8 @@ Name the key yourself with the third argument of `constrained`, or with the seco
     schema.statement("create index lines_total on lines (total)")
     ```
 
-The SQL you give to `check`, `storedAs`, `virtualAs`, `rawColumn` and `statement` goes into the
-statement as written. Build it from constants, never from user input. Table and column names are
+The SQL you give to `check`, `storedAs`, `virtualAs`, `rawColumn`, `rawIndex` and `statement` goes
+into the statement as written. Build it from constants, never from user input. Table and column names are
 different: quotes inside a name are escaped, and only empty names and names with control characters
 are refused. Use `schema.driverName()` (`"sqlite"` or `"pgsql"`) when raw SQL differs by database.
 
@@ -296,6 +456,66 @@ Inside a transaction you opened yourself, a table that other tables point at is 
     }
     ```
 
+`IndexInfo` also reports `orders()` (`asc` or `desc` for each column), `collations()` (an empty string
+for the default) and `where()`, an `Optional` with the condition's SQL text. The text is the
+database's own, and PostgreSQL rewrites it, so compare it within one database.
+
+### Columns and index checks
+
+=== "Java"
+
+    ```java
+    for (ColumnInfo column : schema.getColumns("users")) {
+        System.out.println(column.name() + " " + column.type() + " nullable=" + column.isNullable());
+    }
+    List<String> names = schema.getColumnListing("users");           // names, in column order
+    boolean hasBoth = schema.hasColumns("users", List.of("id", "email"));
+
+    List<String> indexNames = schema.getIndexListing("users");       // lower case
+    boolean byName = schema.hasIndex("users", "users_email_unique");
+    boolean byColumns = schema.hasIndex("users", List.of("email"), IndexType.UNIQUE);
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    for (column in schema.getColumns("users")) {
+        println("${column.name()} ${column.type()} nullable=${column.isNullable()}")
+    }
+    val names = schema.getColumnListing("users")           // names, in column order
+    val hasBoth = schema.hasColumns("users", listOf("id", "email"))
+
+    val indexNames = schema.getIndexListing("users")       // lower case
+    val byName = schema.hasIndex("users", "users_email_unique")
+    val byColumns = schema.hasIndex("users", listOf("email"), IndexType.UNIQUE)
+    ```
+
+`getColumns` returns one `ColumnInfo` per column, in column order, for a table or a view. An unknown table gives an empty list. `ColumnInfo` is an immutable value:
+
+| Method | Returns |
+|---|---|
+| `name()` | The column name. |
+| `typeName()` | The base type in lower case, such as `varchar`. |
+| `type()` | The full type in lower case, such as `varchar(255)`. |
+| `collation()` | An `Optional` with the collation name; empty for the default. |
+| `isNullable()` | Whether the column accepts `NULL`. |
+| `defaultValue()` | An `Optional` with the default as raw SQL text; empty for none. |
+| `isAutoIncrement()` | Whether the database fills the column with the next number. |
+| `comment()` | An `Optional` with the column comment. |
+| `generation()` | An `Optional<ColumnGeneration>` for a generated column: `isStored()` and `expression()`. |
+
+- **SQLite and Android:** `type()` is the declared type text in lower case, as written in the `create table` statement. A column counts as auto-increment only when it is a single-column integer primary key, including `integer primary key desc`. `comment()` is always empty. Hidden columns of a virtual table are left out. Collation and the generation expression are read from the table's `create` SQL. Generated columns need SQLite 3.31; on SQLite older than 3.26 the list is plain, with no generation information.
+- **PostgreSQL:** `type()` is the database's own formatted type, such as `character varying(255)`, and `typeName()` is the internal type name, such as `varchar`; array types begin with an underscore, such as `_int4`. A column is auto-increment when its default starts with `nextval(` or when it is an identity column. For a generated column the default is empty and the expression is in `generation()`. Dropped columns are never listed. Below PostgreSQL 12 there is no generation information, and below 10 no identity information.
+
+`getColumnListing` returns only the names. `hasColumns` is `true` only when every name exists, ignoring case; an empty list gives `true`.
+
+`getIndexListing` returns the index names in lower case, so a quoted mixed-case PostgreSQL index name is not returned as written. `hasIndex` takes an index name or a list of columns, and an optional `IndexType` (`PRIMARY` or `UNIQUE`). `UNIQUE` also matches the primary key, as in Laravel. For example:
+
+- A name is compared ignoring case.
+- A column list must match the index's columns in the same order, ignoring case.
+- `IndexType.PRIMARY` matches only the primary key. `IndexType.UNIQUE` matches any unique index, and the primary key counts as one.
+- The primary key shows up as an index on both databases; SQLite reports it as `primary`.
+
 ### List and drop everything
 
 === "Java"
@@ -327,6 +547,71 @@ Inside a transaction you opened yourself, a table that other tables point at is 
 
 `Migrator.fresh()` uses these calls: see [Migrations](migrations.md#start-from-scratch).
 
+## Create and drop a database
+
+`createDatabase` and `dropDatabaseIfExists` run on the server the schema is connected to. On
+PostgreSQL, use a schema on a connection to a maintenance database such as `postgres`. A name is a
+database name on PostgreSQL and a file path on SQLite. The grammar quotes every PostgreSQL name, so
+a name is never joined into the SQL as raw text.
+
+=== "Java"
+
+    ```java
+    Schema server = manager.schema("server");   // a connection to the maintenance database
+
+    server.createDatabase("shop_test");
+    server.createDatabase("shop_copy", "shop_template");
+    server.createDatabase("shop_fast", "shop_template", CopyStrategy.WAL_LOG);
+
+    boolean existed = server.dropDatabaseIfExists("shop_test");   // false when it was absent
+    server.dropDatabaseIfExists("shop_fast", true);               // with (force): ends sessions first
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val server = manager.schema("server")   // a connection to the maintenance database
+
+    server.createDatabase("shop_test")
+    server.createDatabase("shop_copy", "shop_template")
+    server.createDatabase("shop_fast", "shop_template", CopyStrategy.WAL_LOG)
+
+    val existed = server.dropDatabaseIfExists("shop_test")   // false when it was absent
+    server.dropDatabaseIfExists("shop_fast", true)           // with (force): ends sessions first
+    ```
+
+| Method | PostgreSQL | SQLite |
+|---|---|---|
+| `createDatabase(name)` | `create database`, with no encoding clause: the database takes the server's default encoding. | Creates an empty file. An existing file is not replaced; the call fails. |
+| `createDatabase(name, template)` | Adds `template`, so the new database is a copy of the template. | Copies the template file. |
+| `createDatabase(name, template, strategy)` | Adds `strategy file_copy` or `strategy wal_log`. Needs PostgreSQL 15 or later. | Ignored: a file copy has no strategy. |
+| `dropDatabaseIfExists(name)` | `drop database if exists`. Returns `true` if the database existed. | Deletes the file and its `-wal`, `-shm` and `-journal` files. Returns `true` if the main file existed. |
+| `dropDatabaseIfExists(name, force)` | Adds `with (force)`, which ends the sessions on the database first. Needs PostgreSQL 13 or later. | Ignored: SQLite has no sessions to end. |
+
+A missing database is not an error: `dropDatabaseIfExists` returns `false`. A null or blank name, or
+a blank template, throws `IllegalArgumentException`. When the server is too old for `strategy` or
+`force`, the call throws `UnsupportedOperationException` that names the server version, before it
+creates or drops anything.
+
+`CopyStrategy` has two values. `FILE_COPY` copies the template's files and forces two checkpoints.
+`WAL_LOG` replays the template through the write-ahead log, with no checkpoint but more log written.
+PostgreSQL copies a template only while no other session is connected to it, and the role needs the
+`CREATEDB` privilege.
+
+On SQLite:
+
+- A name that is `:memory:`, or any other in-memory spelling, is refused with
+  `IllegalArgumentException`: there is no file to create or delete.
+- Only the template file is copied. Its `.migrate.lock` file is not.
+- A template in WAL mode must be checkpointed before the copy, with `pragma wal_checkpoint(TRUNCATE)`.
+  The copy takes the main file only, so rows still in the `-wal` file would be missing from it.
+- A copy that fails part way deletes the partial file it made, so a later call never finds a
+  truncated database.
+
+Under `pretend`, PostgreSQL records the statement and changes nothing, and `dropDatabaseIfExists`
+returns `false`. SQLite has no SQL to record, so both methods throw `UnsupportedOperationException`
+there.
+
 ## Preview the SQL
 
 === "Java"
@@ -343,7 +628,7 @@ Inside a transaction you opened yourself, a table that other tables point at is 
 
 `pretend` lists the statements and changes nothing. It reads the live tables, so a rebuild shows its
 real statements, but a table made earlier in the same pretend run does not exist for it.
-`hasTable` and `hasColumn` return `false` in pretend mode.
+`hasTable` and `hasColumn` return `false` in pretend mode. `getColumns`, `getColumnListing`, `hasColumns`, `getIndexListing` and `hasIndex` read the live schema, also in pretend mode.
 
 Inside a transaction, call `schema.on(tx)` so the work runs on the transaction: `schema.on(tx).create(...)`.
 

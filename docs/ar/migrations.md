@@ -57,6 +57,17 @@
 
 ثلاثة overrides اختيارية: `withinTransaction()` للخروج من الـ transaction المحيطة، و`shouldRun()` لتخطي الـ migration، و`connection()` لإرسالها إلى اتصال مسمى آخر.
 
+### الترتيب
+
+تُنفَّذ الـ migrations المعلقة دائمًا مرتبة بالاسم، أيًّا كان الترتيب الذي أضفتها به. القائمة المبنية من عدة modules هي قائمة واحدة عند الـ migrator، فتُدمج بالاسم أيضًا: إن كانت أسماء migrations الـ module ب تُرتَّب قبل أسماء الـ module أ، وكان جدول في ب يشير إلى جدول في أ، فستُنفذ migration ب أولًا وتفشل بخطأ مثل `relation "accounts" does not exist`. سمِّ الـ migrations بحيث يتبع الترتيبُ الاعتمادياتِ، مثلًا بتاريخ كتابتها، أو ببادئة لكل module تُرتَّب بحسب الاعتماد.
+
+```text
+2026_01_10_000000_create_accounts_table   (module أ، تُنفذ أولًا)
+2026_01_12_000000_create_entries_table    (module ب، تشير إلى accounts)
+```
+
+الـ rollback والـ reset يسيران بالعكس: آخر batch أولًا، وداخل الـ batch الاسم الأعلى أولًا. لا يوجد خيار للتنفيذ بترتيب القائمة.
+
 ## التشغيل والتراجع
 
 تعيد `manager.migrator(name)` كائن `Migrator.Builder` لذلك الاتصال، مبنيًا من إعداده. بدون manager استعمل `Migrator.builder(SQLiteSchema.of(connection))` أو ما يقابله في `PostgresSchema`.
@@ -224,7 +235,15 @@
 
 ## قفل الـ migration (Migration lock)
 
-لا شيء يمنع عمليتين من التهجير معًا ما لم تضف قفلًا. لدى PostgreSQL قفل مبني على advisory lock (قفل استشاري في PostgreSQL).
+لا شيء يمنع عمليتين من التهجير معًا ما لم يكن هناك قفل ممسوك. يأخذ الـ migrator القفل قبل كل تشغيل أو تراجع أو reset، ويعيده حين ينتهي الاستدعاء، نجح أو فشل. استدعاءات الحالة وpretend لا تأخذ قفلًا. ونوع القفل يتبع قاعدة البيانات:
+
+| قاعدة البيانات | القفل | أين يعيش القفل |
+|---|---|---|
+| PostgreSQL | `PostgresMigrationLock`، وهو advisory lock (قفل استشاري في PostgreSQL) على مستوى الجلسة (session) | جلسة على الخادم. إذا مات التطبيق أنهى الخادم الجلسة وحرّر القفل. |
+| SQLite أو Android مع ملف قاعدة بيانات | `FileMigrationLock` | ملف بجانب قاعدة البيانات اسمه `<database>.migrate.lock`. يحرره نظام التشغيل إذا مات التطبيق. يبقى الملف في مكانه بعد كل تشغيل. |
+| SQLite أو Android في الذاكرة | لا قفل | لا شيء يُشارَك مع عملية أخرى، فلا يوجد ما يُقفل. |
+
+يمنح الـ manager كل اتصال قفله، كما في الأمثلة أدناه. مدة الانتظار 60 ثانية افتراضيًا. على SQLite وAndroid يحددها الخيار `lock_wait`، مثل `5s` أو `500ms`. على PostgreSQL يضبط `lock_wait` الـ `lock_timeout` للجلسات، ويبقى للقفل مدة انتظاره الخاصة وهي 60 ثانية، ويمكن تغييرها بـ `PostgresMigrationLock(dataSource, name, wait, unit)`.
 
 === "Java"
 
@@ -262,7 +281,18 @@
         .build()
     ```
 
-لقاعدة أخرى، نفّذ الواجهة `MigrationLock` (الدالتان `acquire()` و`release()`).
+على SQLite وAndroid مرّر `new FileMigrationLock(() -> databaseFile)` بالطريقة نفسها.
+
+بعض التفاصيل التي تنطبق على الأقفال أعلاه:
+
+- داخل الـ JVM الواحدة يأخذ الـ migrators دورهم على القفل نفسه أيضًا، فينتظر الثاني الأول.
+- قد تتجاهل أنظمة الملفات الشبكية (network file systems) أقفال الملفات، فلا يحمي القفل شيئًا حينها. أبقِ ملف SQLite الذي يُهاجَر على قرص محلي.
+- على Android، يفتح القفل قاعدة البيانات أولًا، فيعمل `onCreate` أو `onUpgrade` الخاص بالـ helper قبل أن يُؤخذ القفل. ضع تغييرات المخطط في الـ migrations، لا في الـ helper.
+- الـ `DataSource` الذي تزوّده يأخذ قفل الملف فقط إذا ذكر الإعداد `database` أو `url` الملف. من دون أيّ منهما لا يكون لذلك الاتصال قفل.
+- يمسك قفل PostgreSQL جلسة واحدة من الـ pool طوال التشغيل، والـ migrator يحتاج جلسة أخرى، لذلك يجب أن يسمح الـ pool بجلستين على الأقل. مع pool من جلسة واحدة ينتظر الـ migrator مهلة الـ pool نفسها ثم يفشل، ويحمل الخطأ ملاحظة (suppressed exception) تقول إن الـ pool يحتاج جلستين.
+- على PostgreSQL استخدم اسم قفل واحدًا لكل جدول migrations. الـ migrators على الجدول نفسه تشترك في الاسم، والجداول المختلفة يُفضَّل أن تختلف أسماؤها، وإلا انتظرت بعضها. عبر الـ manager يستخدم كل اتصال الاسم الافتراضي `diwan-migrations`، فابنِ القفل بنفسك بـ `new PostgresMigrationLock(dataSource, name)` لإعطاء جدول اسمه الخاص.
+
+لقاعدة أخرى، نفّذ الواجهة `MigrationLock` (الدالتان `acquire()` و`release()`). وأضف `explain(RuntimeException)` إذا كان القفل قادرًا على تفسير سبب فشل التشغيل؛ والافتراضي لا يفعل شيئًا.
 
 ## الـ Checksums
 

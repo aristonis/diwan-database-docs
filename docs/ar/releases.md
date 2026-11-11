@@ -5,6 +5,15 @@
 صفحة على [GitHub Releases](https://github.com/aristonis/diwan-database/releases) فيها الملاحظات نفسها
 وملفات الإصدار.
 
+## 0.4.0 (2026-11-11)
+
+المخطط والترحيلات ودعم الاختبار. يجب إعادة ترجمة الشيفرة المترجمة على 0.3.x؛ انظر [دليل الترقية](upgrade.md). يضيف:
+
+- **المخطط:** الفحص (`getColumns` و`hasColumns` و`getIndexListing` و`hasIndex`)، والفهارس الجزئية والمرتّبة، و`rawIndex`، والجداول المؤقتة، وتعليقات الجداول، و`foreignIdFor`. انظر [المخطط](schema.md).
+- **الترحيلات:** تُقفل قواعد بيانات ملفات SQLite وAndroid أثناء الترحيل. انظر [الترحيلات](migrations.md).
+- **الاختبار:** وضع التراجع يعيد ضبط عدّادات PostgreSQL؛ ووضع القالب يعطي كل اختبار نسخته من قاعدة البيانات؛ و`Schema.createDatabase` و`dropDatabaseIfExists`. انظر [الاختبار](testing.md).
+- **إصلاحات:** المعاملة الملغاة في PostgreSQL تفشل بخطأ واضح؛ وفشل الالتزام بمفتاح مؤجّل على Android يتراجع؛ وقيم `OffsetTime`؛ و`DiwanError.table()`. انظر [الأخطاء](errors.md).
+
 ## 0.3.1 (2026-11-09)
 
 إصدار إصلاح لـ 0.3.0. لا شيء ينكسر.

@@ -6,39 +6,39 @@ on the desktop. The module is a plain JAR with no runtime dependency.
 
 === "Gradle (Kotlin)"
     ```kotlin
-    implementation("org.aristonis:diwan-database:0.3.1")
-    implementation("org.aristonis:diwan-database-android:0.3.1")
-    implementation("org.aristonis:diwan-database-sqlite:0.3.1")
-    implementation("org.aristonis:diwan-database-eloquent:0.3.1")   // only if you use models
+    implementation("org.aristonis:diwan-database:0.4.0")
+    implementation("org.aristonis:diwan-database-android:0.4.0")
+    implementation("org.aristonis:diwan-database-sqlite:0.4.0")
+    implementation("org.aristonis:diwan-database-eloquent:0.4.0")   // only if you use models
     ```
 === "Gradle (Groovy)"
     ```groovy
-    implementation 'org.aristonis:diwan-database:0.3.1'
-    implementation 'org.aristonis:diwan-database-android:0.3.1'
-    implementation 'org.aristonis:diwan-database-sqlite:0.3.1'
-    implementation 'org.aristonis:diwan-database-eloquent:0.3.1'   // only if you use models
+    implementation 'org.aristonis:diwan-database:0.4.0'
+    implementation 'org.aristonis:diwan-database-android:0.4.0'
+    implementation 'org.aristonis:diwan-database-sqlite:0.4.0'
+    implementation 'org.aristonis:diwan-database-eloquent:0.4.0'   // only if you use models
     ```
 === "Maven"
     ```xml
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database</artifactId>
-        <version>0.3.1</version>
+        <version>0.4.0</version>
     </dependency>
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-android</artifactId>
-        <version>0.3.1</version>
+        <version>0.4.0</version>
     </dependency>
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-sqlite</artifactId>
-        <version>0.3.1</version>
+        <version>0.4.0</version>
     </dependency>
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-eloquent</artifactId>
-        <version>0.3.1</version>
+        <version>0.4.0</version>
     </dependency>
     <!-- only if you use models -->
     ```
@@ -136,6 +136,20 @@ Diwan begins Android transactions with the exclusive `beginTransaction`, or with
 other threads. Call `enableWriteAheadLogging()` in `onConfigure`, as above, and keep
 transactions short.
 
+## Deferred foreign keys and commit
+
+With `defer_foreign_keys` on and `foreign_keys` on, `commit()` runs `PRAGMA foreign_key_check` first.
+Only the outermost commit does this. If the check finds a broken key, the transaction rolls back,
+none of its writes stay, and the commit throws a foreign key `DriverException` that names the child
+table. The connection can begin a new transaction after that.
+
+Limits:
+
+- A key declared `DEFERRABLE INITIALLY DEFERRED` in raw DDL is not checked, because the check runs
+  only when `defer_foreign_keys` is on.
+- The check scans the whole database. An orphan row left from before the transaction also fails the
+  commit.
+
 ## What needs a newer Android
 
 Android ships its own SQLite, and its version follows the API level.
@@ -144,6 +158,7 @@ Android ships its own SQLite, and its version follows the API level.
 |---|---|---|
 | `upsert` (query builder and models) | SQLite 3.24, API 30 | `UnsupportedOperationException` naming the version, before any SQL |
 | Right join | SQLite 3.39, API 34 | SQLite's own error as a `QueryException` |
+| Column details in `getColumns` (generated-column information) | SQLite 3.26 | plain column list, no generated info |
 | `insertOrIgnore`, `updateOrInsert` | any version | works |
 
 `updateOrInsert` reads, then writes, and is not atomic. On API 28 and 29, write a read-then-write
@@ -155,6 +170,7 @@ A `decimal` column has numeric affinity, so `10.10` reads as the double `10.1`. 
 use a scaled integer column, or text with a fixed scale. Dates are stored as
 `yyyy-MM-dd HH:mm:ss` text, and an `Instant` as UTC text or whole microseconds, as on the desktop
 SQLite driver.
+An `OffsetTime` binding is stored as UTC text, `HH:mm:ss+00:00`, on both.
 
 ## Debug query log
 

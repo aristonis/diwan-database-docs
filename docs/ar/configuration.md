@@ -155,8 +155,11 @@ database.connections.main.transaction_mode=immediate
 | `search_path` | نص | لا يوجد | يُضاف إلى العنوان باسم `currentSchema`: الـ schema التي تستعملها الجلسة أولًا. يُتخطى إن كان `currentSchema` في `url` أصلًا. |
 | `schema` | نص | لا يوجد | مثل `search_path`؛ يُستعمل فقط حين لا يكون `search_path` معيّنًا. |
 | `lock_wait` | مدة: `5s` أو `500ms` أو أرقام بالميلي ثانية | لا يوجد | يضيف `-c lock_timeout=<ms>` إلى معامل `options` في العنوان: مدة انتظار الجملة للقفل. يجب أن يكون أكبر من 0 وأقل من أو يساوي 2147483647 ms وإلا رمى الاتصال خطأ. |
+| `timezone` | نص | لا يوجد | يضبط المنطقة الزمنية لكل جلسة، كما يفعل خيار `timezone` في Laravel: اسم IANA مثل `UTC` أو إزاحة مثل `+03:00`. ينفّذ Diwan الأمر `SET TIME ZONE '<value>'` على كل اتصال يسلّمه، سواء بُني مصدر البيانات من الإعدادات أو قُدّم جاهزًا. وإن كان التجمّع يعيد ضبط الجلسات بـ `DISCARD ALL` أو `RESET ALL` فإنه يلغي هذا الضبط: فاضبط المنطقة في SQL التهيئة الخاص بالتجمّع أو على الخادم. لا يقبل إلا الحروف والأرقام و`/ _ + - :` وإلا رمى الاتصال خطأ. معطّل افتراضيًا. |
 
 ويحصل اتصال `pgsql` أيضًا على قفل ترحيل (migration lock)، وهو قفل استشاري (advisory lock) على مستوى الجلسة يمنع عمليتين من ترحيل قاعدة واحدة معًا. ولا يحتاج مفتاحًا.
+
+بلا `timezone` تحوّل PostgreSQL القيمة بمنطقة الجلسة، وهي تتبع الـ JVM. خزّن `Instant` في عمود `timestamptz`، فهو يحفظ اللحظة أيًا كانت المنطقة. ولوضع قيم `Instant` في أعمدة `timestamp` العادية اضبط `timezone=UTC`: بدونه يتزحزح الوقت المخزَّن بمنطقة الـ JVM أو الجلسة. ويغيّر ضبط `timezone` أيضًا شكل `now()` الذي يطبعه الخادم وما تحمله القيمة الافتراضية لعمود `timestamp`.
 
 ```properties
 database.connections.main.driver=pgsql
@@ -164,6 +167,7 @@ database.connections.main.url=jdbc:postgresql://db.internal:5432/shop
 database.connections.main.sslmode=require
 database.connections.main.search_path=app
 database.connections.main.lock_wait=10s
+database.connections.main.timezone=UTC
 ```
 
 ## Android
@@ -309,6 +313,7 @@ lock_wait: config/LockWaitOption.java:KEY,parseMillis; SQLiteConnector.java:164,
 transaction_mode: SQLiteConnector.java:65,150-161; AndroidConnector.java:46,104-121
 sslmode: PostgresConnector.java:103
 search_path: PostgresConnector.java:104
+timezone: PostgresConnector.java:132
 schema: PostgresConnector.java:106
 ${...} interpolation: config/ConfigInterpolator.java:resolve,substitute
 env name mapping: config/EnvConfigSource.java:65
