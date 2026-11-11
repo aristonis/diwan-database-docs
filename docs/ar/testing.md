@@ -136,6 +136,177 @@ PostgreSQL:
 - الجداول الداخلية تُترك: `spatial_ref_sys` على PostgreSQL، و`android_metadata` وجداول FTS المساعدة على SQLite.
 - يفشل الـ extension بـ `IllegalStateException` تحت `ExecutionMode.CONCURRENT`. استعمل وضع rollback، أو ضع على الصنف `@Execution(ExecutionMode.SAME_THREAD)`.
 
+## وضع Template
+
+يعطي وضع template كل اختبار قاعدة بيانات خاصة به: نسخة من قالب (template) يحمل المخطط بعد تطبيق الـ migrations. يُثبّت الاختبار التغييرات فعليًا (commit) كما في وضع truncate، لكن لا يرى أي اختبار بيانات اختبار آخر، ويجوز تشغيل الاختبارات بالتوازي.
+
+| | `rollback` | `truncate` | template |
+|---|---|---|---|
+| ماذا يرى الاختبار | transaction خاصة به تُلغى بعده | قاعدة مشتركة تُفرَّغ بعد كل اختبار | نسخة خاصة به من القالب |
+| التثبيت الفعلي (commit) | لا | نعم | نعم |
+| JUnit المتوازي | نعم | لا | نعم |
+| التكلفة لكل اختبار | الأدنى | truncate واحد | نسخة واحدة وحذف واحد |
+| يحتاج إلى | أي قاعدة بيانات | أي قاعدة بيانات | PostgreSQL مع `CREATEDB`، أو SQLite مع `directory(Path)` |
+
+استعمل وضع template حين يحتاج الاختبار إلى تثبيت فعلي، ولا يجوز أن يعتمد على بيانات الاختبارات الأخرى أو يُفسدها: مثل اختبارات تُثبّت على threads أخرى بينما تعمل اختبارات غيرها. استعمل rollback حين لا يحتاج الاختبار إلى تثبيت. واستعمل truncate حين يجب أن تعمل الاختبارات واحدًا تلو الآخر.
+
+=== "Java"
+
+    ```java
+    // TEST_DB_PASSWORD is read from the environment, never written into the code.
+    static final DataSource ROOT = new DriverManagerDataSource(
+            "jdbc:postgresql://localhost:5432/postgres", "test_admin", System.getenv("TEST_DB_PASSWORD"));
+
+    @RegisterExtension
+    static RefreshDatabase db = RefreshDatabase.template(
+            ROOT,
+            name -> postgresManager(name),        // a manager on the database `name`
+            PostgresSchema::of,
+            List.of(new CreateUsersTable()))
+        .strategy(CopyStrategy.FILE_COPY);
+
+    static DatabaseManager postgresManager(String database) {
+        ConnectionConfig connection = ConnectionConfig.builder("main").driver("pgsql")
+                .host("localhost").port(5432).database(database)
+                .username("test_admin").password(System.getenv("TEST_DB_PASSWORD")).build();
+        return DatabaseManager.builder()
+                .config(DatabaseConfig.builder().defaultConnection("main").connection(connection).build())
+                .connector(new PostgresConnector())
+                .build();
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    companion object {
+        // TEST_DB_PASSWORD is read from the environment, never written into the code.
+        val ROOT: DataSource = DriverManagerDataSource(
+            "jdbc:postgresql://localhost:5432/postgres", "test_admin", System.getenv("TEST_DB_PASSWORD"))
+
+        @JvmField
+        @RegisterExtension
+        val db: RefreshDatabase = RefreshDatabase.template(
+            ROOT,
+            { name -> postgresManager(name) },    // a manager on the database `name`
+            PostgresSchema::of,
+            listOf(CreateUsersTable()))
+            .strategy(CopyStrategy.FILE_COPY)
+
+        fun postgresManager(database: String): DatabaseManager {
+            val connection = ConnectionConfig.builder("main").driver("pgsql")
+                .host("localhost").port(5432).database(database)
+                .username("test_admin").password(System.getenv("TEST_DB_PASSWORD")).build()
+            return DatabaseManager.builder()
+                .config(DatabaseConfig.builder().defaultConnection("main").connection(connection).build())
+                .connector(PostgresConnector())
+                .build()
+        }
+    }
+    ```
+
+يحتاج SQLite إلى مجلد. يبني الـ extension القالب فيه، ثم ينسخه لكل اختبار:
+
+=== "Java"
+
+    ```java
+    static final Path DIRECTORY = Path.of("build/template-dbs");
+
+    @RegisterExtension
+    static RefreshDatabase db = RefreshDatabase.template(
+            new DriverManagerDataSource("jdbc:sqlite:build/template-root.db", null, null),
+            file -> sqliteManager(file),          // opens exactly the file it is given
+            SQLiteSchema::of,
+            List.of(new CreateUsersTable()))
+        .directory(DIRECTORY);
+
+    static DatabaseManager sqliteManager(String file) {
+        ConnectionConfig connection = ConnectionConfig.builder("main").driver("sqlite").database(file).build();
+        return DatabaseManager.builder()
+                .config(DatabaseConfig.builder().defaultConnection("main").connection(connection).build())
+                .connector(new SQLiteConnector())
+                .build();
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    companion object {
+        val DIRECTORY: Path = Path.of("build/template-dbs")
+
+        @JvmField
+        @RegisterExtension
+        val db: RefreshDatabase = RefreshDatabase.template(
+            DriverManagerDataSource("jdbc:sqlite:build/template-root.db", null, null),
+            { file -> sqliteManager(file) },      // opens exactly the file it is given
+            SQLiteSchema::of,
+            listOf(CreateUsersTable()))
+            .directory(DIRECTORY)
+
+        fun sqliteManager(file: String): DatabaseManager {
+            val connection = ConnectionConfig.builder("main").driver("sqlite").database(file).build()
+            return DatabaseManager.builder()
+                .config(DatabaseConfig.builder().defaultConnection("main").connection(connection).build())
+                .connector(SQLiteConnector())
+                .build()
+        }
+    }
+    ```
+
+### كيف يعمل القالب
+
+- يُسمّى القالب باسم قائمة الـ migrations: `diwan_tpl_<hash8>`، حيث تغطي البصمة الصنف والاسم والـ checksum لكل migration بالترتيب. التشغيل الذي له القائمة نفسها يعيد استعمال القالب، وقائمة متغيرة تبني قالبًا جديدًا بجانبه.
+- يحصل كل اختبار على نسخة واحدة باسم `diwan_t_<hash8>_<run>_<n>`، وتُحذف النسخة بعد الاختبار.
+- يُطبَّق الـ migrate على القالب عبر manager خاص به، ويُغلق قبل أول نسخة. والتشغيلات التي تبدأ معًا تبنيه مرة واحدة.
+- يحتفظ التشغيل باتصال واحد من الـ root data source حتى ينتهي، وتعيش أقفاله على ذلك الاتصال. فاجعل الـ root مصدر بيانات تشغيل عادي (driver) أو pool في وضع session، لا pooler في وضع transaction.
+- يغلق الـ extension الـ manager الذي يحصل عليه لكل اختبار، فأبقِ pool كل manager صغيرًا: الحد الأقصى 2 اتصالًا يكفي معظم الاختبارات.
+- يجب أن يغلق manager الذي يعيده `perDatabase` اتصالاته فورًا عند إغلاقه. فالـ pool الذي يغلقها ببطء قد يُفشل حذف النسخة. في PostgreSQL 13 أو أحدث يستعمل الحذف `FORCE`، وفي الأقدم يترك الإغلاق البطيء النسخة لفحص التشغيل التالي.
+
+### PostgreSQL
+
+- يحتاج الدور إلى `CREATEDB`. بدونه يفشل التشغيل قبل الاختبار الأول، بـ `IllegalStateException` تسمّي الدور وتذكر منحة `ALTER ROLE ... CREATEDB`.
+- لا يجوز أن يكون أي session آخر متصلًا بالقالب حين تُنشأ نسخة. يغلق الـ extension جلساته على القالب بعد بنائه. والنسخة تنتظر نحو ثانيتين لـ session يُغلق للتو؛ فإن بقي الـ session مفتوحًا فشلت النسخة بـ `IllegalStateException` تسمّي القالب.
+- يضبط `strategy(CopyStrategy)` استراتيجية كل نسخة. تنسخ `FILE_COPY` ملفات القالب وتفرض نقطتي checkpoint. وتعيد `WAL_LOG` تشغيل القالب عبر سجل الكتابة المسبقة (WAL) بلا checkpoint، لكنها تكتب سجلًا أكبر. الافتراضي هو `FILE_COPY` في PostgreSQL 15 أو أحدث، وبلا جملة في الخوادم الأقدم. والاستراتيجية الصريحة على خادم أقدم تفشل حين تُنشأ أول نسخة.
+- تُشغّل `FILE_COPY` نقطة checkpoint قبل كل نسخة وبعدها، وهذا يكلّف أكثر على خادم مشترك مشغول. وتناسب `WAL_LOG` القوالب الصغيرة.
+- في قياس بـ 20 جدولًا و10 اختبارات، كان متوسط زمن الاختبار: وضع truncate ‏379 ms، و`FILE_COPY` ‏299 ms، و`WAL_LOG` ‏310 ms. واستغرق الإعداد لمرة واحدة 309 ms مع `FILE_COPY` و70 ms مع `WAL_LOG`.
+- في PostgreSQL 18 أو أحدث، يمكن للإعداد `file_copy_method` إذا ضُبط على `clone` أن يجعل نسخ `FILE_COPY` أسرع على نظام ملفات يدعم الاستنساخ.
+- تُحذف النسخة بـ `FORCE` في PostgreSQL 13 أو أحدث، فتنهي أي session ما زال عليها.
+
+### SQLite
+
+- يسمّي `directory(Path)` مجلد القالب والنسخ. وبدونه يرفض وضع template البدء بـ `IllegalStateException`. وعلى هدف PostgreSQL يُرفض `directory(Path)` بـ `IllegalStateException`.
+- تُنشئ الإضافة مجلد النسخ. أما مجلد ملف الـ DataSource الجذري نفسه فيجب أن يكون موجودًا قبل التشغيل.
+- كل قاعدة هي الملف `<directory>/<name>.db`. يتلقى `perDatabase` المسار المطلق لذلك الملف، ويجب أن يفتح هذا المسار بالضبط. وإلا فشل التشغيل، والرسالة تذكر المسار المتوقع والمسار المفتوح.
+- يُطبَّق الـ migrate على القالب في ملف خاص به، ثم يُنفَّذ عليه checkpoint ويُنقل إلى مكانه. وينسخ كل اختبار هذا الملف، ويحذف النسخة بعد الاختبار مع ملفات `-wal` و`-shm` و`-journal` الخاصة بها.
+- يطبَّق `strategy(CopyStrategy)` على PostgreSQL وحده، ويتجاهله SQLite.
+
+### الخيارات
+
+كل خيار يعيد extension جديدًا، والخيار خارج وضع template يرمي `IllegalStateException`.
+
+- `strategy(CopyStrategy)`: استراتيجية النسخ في PostgreSQL. انظر أعلاه.
+- `directory(Path)`: المجلد الخاص بـ SQLite. وهو مطلوب هناك.
+- `dropStaleTemplates()`: عند بدء التشغيل، يحذف قوالب قوائم migrations الأخرى. في PostgreSQL يبقى القالب الذي ما زال تشغيل آخر ينسخ منه، ويُسجَّل الرفض. وفي SQLite تُحذف ملفات القوالب الأخرى في المجلد مع ملفاتها الجانبية وملفات القفل، ويبقى القالب الذي يملك تشغيل آخر قفل بنائه.
+
+### الاختبارات المتوازية وعدة JVM
+
+- يعمل وضع template مع `ExecutionMode.CONCURRENT`، على عكس وضع truncate.
+- يمكن لعدة JVM أن تشترك في خادم واحد أو مجلد واحد، مثل forks الاختبار في Gradle حين يكون `maxParallelForks` أكبر من 1. يبني تشغيل واحد القالب، ويعيد الآخرون استعماله. ويحمل اسم كل نسخة معرّف التشغيل الخاص بـ JVM التي أنشأتها، فلا يأخذ تشغيل نسخة تشغيل آخر.
+
+### البقايا
+
+- يحتفظ التشغيل بقفل ما دام حيًا: قفل استشاري (advisory lock) في PostgreSQL، وقفل ملف في SQLite. وعند بدء تشغيل، يزيل نسخ وقواعد البناء أو ملفاته للتشغيلات المنتهية. ولا يزيل نسخه هو، ويترك ملفات التشغيل الحي كما هي.
+- التشغيل الذي تعطل يترك نسخه حتى يبدأ التشغيل التالي.
+- النسخة التي لا تُحذف بعد اختبارها تُسجَّل، ولا تتغير نتيجة الاختبار. يزيلها التشغيل التالي.
+- لا يزيل الفحص أبدًا القالب النهائي الذي يطابق قائمة الـ migrations الحالية. وتبقى القوالب الأقدم إلا إذا ضُبط `dropStaleTemplates()`.
+
+### الحدود
+
+- قاعدة SQLite في الذاكرة غير مدعومة في وضع template: أعطِ مسار ملف عبر `directory(Path)`.
+- Android غير مدعوم: يرفض وضع template مشغّل `android` بـ `IllegalStateException`.
+- يعمل وضع template على PostgreSQL وSQLite فقط.
+
 ## إعادة ضبط الهويات (restartingIdentities)
 
 على PostgreSQL يلغي rollback الصفوف لكن لا يلغي الـ sequence الذي يقف خلف `id`. بدون هذا الخيار تعتمد الأرقام التي يحصل عليها الاختبار على الاختبارات التي عملت قبله. يعيد `restartingIdentities()` العدّادات إلى بدايتها قبل كل اختبار، فيرى كل اختبار الأرقام نفسها:

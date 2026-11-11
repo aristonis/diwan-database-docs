@@ -508,6 +508,57 @@ SQLite لا تستطيع إضافة primary key (مفتاح أساسي) أو for
 
 الدالة `Migrator.fresh()` تستعمل هذه الاستدعاءات: انظر [الـ Migrations](migrations.md#start-from-scratch).
 
+## إنشاء قاعدة بيانات وحذفها
+
+تعمل `createDatabase` و`dropDatabaseIfExists` على الخادم الذي يتصل به الـ schema. في PostgreSQL استعمل schema على اتصال بقاعدة صيانة مثل `postgres`. الاسم هو اسم قاعدة البيانات في PostgreSQL، وهو مسار ملف في SQLite. تضع الـ grammar علامات الاقتباس حول كل اسم في PostgreSQL، فلا يُدمج الاسم في الـ SQL كنص خام.
+
+=== "Java"
+
+    ```java
+    Schema server = manager.schema("server");   // a connection to the maintenance database
+
+    server.createDatabase("shop_test");
+    server.createDatabase("shop_copy", "shop_template");
+    server.createDatabase("shop_fast", "shop_template", CopyStrategy.WAL_LOG);
+
+    boolean existed = server.dropDatabaseIfExists("shop_test");   // false when it was absent
+    server.dropDatabaseIfExists("shop_fast", true);               // with (force): ends sessions first
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val server = manager.schema("server")   // a connection to the maintenance database
+
+    server.createDatabase("shop_test")
+    server.createDatabase("shop_copy", "shop_template")
+    server.createDatabase("shop_fast", "shop_template", CopyStrategy.WAL_LOG)
+
+    val existed = server.dropDatabaseIfExists("shop_test")   // false when it was absent
+    server.dropDatabaseIfExists("shop_fast", true)           // with (force): ends sessions first
+    ```
+
+| الدالة | PostgreSQL | SQLite |
+|---|---|---|
+| `createDatabase(name)` | `create database` بلا جملة encoding، فتأخذ قاعدة البيانات الترميز الافتراضي للخادم. | تنشئ ملفًا فارغًا. لا يُستبدل الملف الموجود، وتفشل الدالة. |
+| `createDatabase(name, template)` | تضيف `template`، فتصبح قاعدة البيانات الجديدة نسخة من القالب. | تنسخ ملف القالب. |
+| `createDatabase(name, template, strategy)` | تضيف `strategy file_copy` أو `strategy wal_log`. تحتاج PostgreSQL 15 أو أحدث. | تُتجاهل، فنسخ الملف لا يملك strategy. |
+| `dropDatabaseIfExists(name)` | `drop database if exists`. تعيد `true` إن كانت قاعدة البيانات موجودة. | تحذف الملف وملفات `-wal` و`-shm` و`-journal` الخاصة به. تعيد `true` إن كان الملف الرئيسي موجودًا. |
+| `dropDatabaseIfExists(name, force)` | تضيف `with (force)` التي تنهي الجلسات المتصلة بقاعدة البيانات أولًا. تحتاج PostgreSQL 13 أو أحدث. | تُتجاهل، فلا جلسات في SQLite تُنهى. |
+
+قاعدة البيانات غير الموجودة ليست خطأ: تعيد `dropDatabaseIfExists` القيمة `false`. الاسم الفارغ أو المكوّن من مسافات فقط، والقالب الفارغ، يرميان `IllegalArgumentException`. إذا كان الخادم أقدم مما يتطلبه `strategy` أو `force`، ترمي الدالة `UnsupportedOperationException` التي تسمّي إصدار الخادم، قبل أن تنشئ شيئًا أو تحذفه.
+
+لـ `CopyStrategy` قيمتان. `FILE_COPY` تنسخ ملفات القالب وتفرض نقطتي checkpoint. أما `WAL_LOG` فتعيد تشغيل القالب عبر سجل الكتابة المسبقة (WAL) بلا checkpoint، لكنها تكتب سجلًا أكبر. وتنسخ PostgreSQL القالب فقط حين لا تكون أي جلسة أخرى متصلة به، ويحتاج الدور إلى صلاحية `CREATEDB`.
+
+على SQLite:
+
+- الاسم `:memory:`، أو أي صيغة أخرى لقاعدة في الذاكرة، يُرفض بـ `IllegalArgumentException`: لا ملف هناك لينشأ أو يُحذف.
+- يُنسخ ملف القالب وحده، ولا يُنسخ ملف `.migrate.lock` الخاص به.
+- القالب في وضع WAL يجب أن يُفرَّغ قبل النسخ بـ `pragma wal_checkpoint(TRUNCATE)`. تنسخ العملية الملف الرئيسي وحده، فالصفوف التي ما زالت في ملف `-wal` تغيب عن النسخة.
+- النسخة التي تفشل في منتصفها تحذف الملف الجزئي الذي أنشأته، فلا يجد استدعاء لاحق قاعدة مقطوعة.
+
+تحت وضع `pretend` (المعاينة)، تسجّل PostgreSQL الجملة ولا تغيّر شيئًا، وتعيد `dropDatabaseIfExists` القيمة `false`. لا تملك SQLite جملة SQL تُسجَّل، فتطلق الدالتان `UnsupportedOperationException` هناك.
+
 ## معاينة الـ SQL
 
 === "Java"

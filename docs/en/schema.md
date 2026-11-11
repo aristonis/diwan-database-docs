@@ -547,6 +547,71 @@ database's own, and PostgreSQL rewrites it, so compare it within one database.
 
 `Migrator.fresh()` uses these calls: see [Migrations](migrations.md#start-from-scratch).
 
+## Create and drop a database
+
+`createDatabase` and `dropDatabaseIfExists` run on the server the schema is connected to. On
+PostgreSQL, use a schema on a connection to a maintenance database such as `postgres`. A name is a
+database name on PostgreSQL and a file path on SQLite. The grammar quotes every PostgreSQL name, so
+a name is never joined into the SQL as raw text.
+
+=== "Java"
+
+    ```java
+    Schema server = manager.schema("server");   // a connection to the maintenance database
+
+    server.createDatabase("shop_test");
+    server.createDatabase("shop_copy", "shop_template");
+    server.createDatabase("shop_fast", "shop_template", CopyStrategy.WAL_LOG);
+
+    boolean existed = server.dropDatabaseIfExists("shop_test");   // false when it was absent
+    server.dropDatabaseIfExists("shop_fast", true);               // with (force): ends sessions first
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    val server = manager.schema("server")   // a connection to the maintenance database
+
+    server.createDatabase("shop_test")
+    server.createDatabase("shop_copy", "shop_template")
+    server.createDatabase("shop_fast", "shop_template", CopyStrategy.WAL_LOG)
+
+    val existed = server.dropDatabaseIfExists("shop_test")   // false when it was absent
+    server.dropDatabaseIfExists("shop_fast", true)           // with (force): ends sessions first
+    ```
+
+| Method | PostgreSQL | SQLite |
+|---|---|---|
+| `createDatabase(name)` | `create database`, with no encoding clause: the database takes the server's default encoding. | Creates an empty file. An existing file is not replaced; the call fails. |
+| `createDatabase(name, template)` | Adds `template`, so the new database is a copy of the template. | Copies the template file. |
+| `createDatabase(name, template, strategy)` | Adds `strategy file_copy` or `strategy wal_log`. Needs PostgreSQL 15 or later. | Ignored: a file copy has no strategy. |
+| `dropDatabaseIfExists(name)` | `drop database if exists`. Returns `true` if the database existed. | Deletes the file and its `-wal`, `-shm` and `-journal` files. Returns `true` if the main file existed. |
+| `dropDatabaseIfExists(name, force)` | Adds `with (force)`, which ends the sessions on the database first. Needs PostgreSQL 13 or later. | Ignored: SQLite has no sessions to end. |
+
+A missing database is not an error: `dropDatabaseIfExists` returns `false`. A null or blank name, or
+a blank template, throws `IllegalArgumentException`. When the server is too old for `strategy` or
+`force`, the call throws `UnsupportedOperationException` that names the server version, before it
+creates or drops anything.
+
+`CopyStrategy` has two values. `FILE_COPY` copies the template's files and forces two checkpoints.
+`WAL_LOG` replays the template through the write-ahead log, with no checkpoint but more log written.
+PostgreSQL copies a template only while no other session is connected to it, and the role needs the
+`CREATEDB` privilege.
+
+On SQLite:
+
+- A name that is `:memory:`, or any other in-memory spelling, is refused with
+  `IllegalArgumentException`: there is no file to create or delete.
+- Only the template file is copied. Its `.migrate.lock` file is not.
+- A template in WAL mode must be checkpointed before the copy, with `pragma wal_checkpoint(TRUNCATE)`.
+  The copy takes the main file only, so rows still in the `-wal` file would be missing from it.
+- A copy that fails part way deletes the partial file it made, so a later call never finds a
+  truncated database.
+
+Under `pretend`, PostgreSQL records the statement and changes nothing, and `dropDatabaseIfExists`
+returns `false`. SQLite has no SQL to record, so both methods throw `UnsupportedOperationException`
+there.
+
 ## Preview the SQL
 
 === "Java"

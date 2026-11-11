@@ -66,6 +66,9 @@
 | `foreignIdFor` على نموذج مفتاحه نصي تُنشئ عمود `uuid` | `ModelKeys` ترفض أي مفتاح ليس عددًا صحيحًا ولا UUID ولا ULID برمي `IllegalArgumentException` |
 | `comment()` على الجدول تكتب تعليقه على PostgreSQL وMySQL، وليس لـ grammar الـ SQLite كود له | تكتبه PostgreSQL. وتتخطاه SQLite وAndroid بلا خطأ، كما يفعل Laravel. وMySQL غير مدعومة |
 | `temporary()` تعمل على SQLite وPostgreSQL، ولا يتحقق grammar الـ SQLite من الجدول المؤقت عند تغييره | تعمل `schema.table` على جدول مؤقت في SQLite للإضافات البسيطة؛ ويُرفض التغيير الذي يحتاج إعادة بناء الجدول برمي `IllegalStateException` |
+| `createDatabase($name)` على PostgreSQL تضيف `encoding` من إعداد `charset` في الاتصال حين يكون مضبوطًا | لا توجد جملة encoding. تأخذ قاعدة البيانات الجديدة الترميز الافتراضي للخادم، أو ترميز القالب حين تنسخه |
+| `createDatabase($name)` على SQLite تكتب ملفًا فارغًا، فيستبدل الملف الموجود | تفشل إذا كان الملف موجودًا، ولا تستبدله أبدًا |
+| `dropDatabaseIfExists($name)` على SQLite تعيد `true` حين لا يوجد ملف، وتحذف الملف الرئيسي وحده | تعيد `false` حين لا يوجد ملف، وتحذف أيضًا ملفات `-wal` و`-shm` و`-journal` |
 
 ## إضافات Diwan
 
@@ -75,6 +78,9 @@
 - ترتيب الفهرس والـ collation: `asc` و`desc` و`collate` على الفهرس.
 - `DiwanError.table()`، أي الجدول الذي يخصّه الفشل.
 - `QueryFactory.restartIdentities(tables)` و`RefreshDatabase.rollback(...).restartingIdentities()`، وهما يعيدان عدّادات الهوية (identity) والـ `serial` في PostgreSQL إلى بدايتها، فترى اختبارات وضع rollback الأرقام نفسها في كل تشغيل. مصدر Laravel لا يحوي إعادة ضبط لكل اختبار: فالـ `setval` الوحيد فيه يضبط قيمة البداية عند إنشاء الجدول فقط.
+- `createDatabase(name, template)` و`createDatabase(name, template, CopyStrategy)`، وهما تنسخان قاعدة بيانات. يحدد `CopyStrategy` (`FILE_COPY` أو `WAL_LOG`) طريقة النسخ في PostgreSQL 15 وما بعده. لا يملك Laravel وسيطة للقالب.
+- `dropDatabaseIfExists(name, force)`، وتنهي الجلسات المتصلة بقاعدة البيانات أولًا في PostgreSQL 13 وما بعده. لا يملك Laravel خيار force.
+- `RefreshDatabase.template(...)`، وهو وضع اختبار يحصل فيه كل اختبار على نسخة خاصة به من قالب طُبِّقت عليه الـ migrations، فيجوز له التثبيت الفعلي والعمل بالتوازي. لا يملك Laravel وضع اختبار من هذا النوع.
 
 ## ليس في 0.2.0
 

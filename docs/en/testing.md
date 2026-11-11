@@ -136,6 +136,217 @@ In truncate mode:
 - Internal tables are left alone: `spatial_ref_sys` on PostgreSQL, `android_metadata` and the FTS shadow tables on SQLite.
 - The extension fails with `IllegalStateException` under `ExecutionMode.CONCURRENT`. Use rollback mode, or mark the class `@Execution(ExecutionMode.SAME_THREAD)`.
 
+## Template mode
+
+Template mode gives every test its own database: a copy of a template that holds the migrated
+schema. The test commits for real, as in truncate mode, but no test sees another test's data, and
+the tests may run in parallel.
+
+| | `rollback` | `truncate` | template |
+|---|---|---|---|
+| What a test sees | Its own transaction, rolled back after the test | The shared database, emptied after each test | Its own copy of the template |
+| Commits are real | No | Yes | Yes |
+| Parallel JUnit | Yes | No | Yes |
+| Cost per test | Lowest | One truncate | One copy and one drop |
+| Needs | Any database | Any database | PostgreSQL with `CREATEDB`, or SQLite with `directory(Path)` |
+
+Use template mode when a test needs real commits and must not depend on, or disturb, the data of
+other tests: for example tests that commit on other threads while other tests run. Use rollback when
+no commit is needed. Use truncate when the tests must run one at a time.
+
+=== "Java"
+
+    ```java
+    // TEST_DB_PASSWORD is read from the environment, never written into the code.
+    static final DataSource ROOT = new DriverManagerDataSource(
+            "jdbc:postgresql://localhost:5432/postgres", "test_admin", System.getenv("TEST_DB_PASSWORD"));
+
+    @RegisterExtension
+    static RefreshDatabase db = RefreshDatabase.template(
+            ROOT,
+            name -> postgresManager(name),        // a manager on the database `name`
+            PostgresSchema::of,
+            List.of(new CreateUsersTable()))
+        .strategy(CopyStrategy.FILE_COPY);
+
+    static DatabaseManager postgresManager(String database) {
+        ConnectionConfig connection = ConnectionConfig.builder("main").driver("pgsql")
+                .host("localhost").port(5432).database(database)
+                .username("test_admin").password(System.getenv("TEST_DB_PASSWORD")).build();
+        return DatabaseManager.builder()
+                .config(DatabaseConfig.builder().defaultConnection("main").connection(connection).build())
+                .connector(new PostgresConnector())
+                .build();
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    companion object {
+        // TEST_DB_PASSWORD is read from the environment, never written into the code.
+        val ROOT: DataSource = DriverManagerDataSource(
+            "jdbc:postgresql://localhost:5432/postgres", "test_admin", System.getenv("TEST_DB_PASSWORD"))
+
+        @JvmField
+        @RegisterExtension
+        val db: RefreshDatabase = RefreshDatabase.template(
+            ROOT,
+            { name -> postgresManager(name) },    // a manager on the database `name`
+            PostgresSchema::of,
+            listOf(CreateUsersTable()))
+            .strategy(CopyStrategy.FILE_COPY)
+
+        fun postgresManager(database: String): DatabaseManager {
+            val connection = ConnectionConfig.builder("main").driver("pgsql")
+                .host("localhost").port(5432).database(database)
+                .username("test_admin").password(System.getenv("TEST_DB_PASSWORD")).build()
+            return DatabaseManager.builder()
+                .config(DatabaseConfig.builder().defaultConnection("main").connection(connection).build())
+                .connector(PostgresConnector())
+                .build()
+        }
+    }
+    ```
+
+SQLite needs a folder. The extension builds the template there and copies it for each test:
+
+=== "Java"
+
+    ```java
+    static final Path DIRECTORY = Path.of("build/template-dbs");
+
+    @RegisterExtension
+    static RefreshDatabase db = RefreshDatabase.template(
+            new DriverManagerDataSource("jdbc:sqlite:build/template-root.db", null, null),
+            file -> sqliteManager(file),          // opens exactly the file it is given
+            SQLiteSchema::of,
+            List.of(new CreateUsersTable()))
+        .directory(DIRECTORY);
+
+    static DatabaseManager sqliteManager(String file) {
+        ConnectionConfig connection = ConnectionConfig.builder("main").driver("sqlite").database(file).build();
+        return DatabaseManager.builder()
+                .config(DatabaseConfig.builder().defaultConnection("main").connection(connection).build())
+                .connector(new SQLiteConnector())
+                .build();
+    }
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    companion object {
+        val DIRECTORY: Path = Path.of("build/template-dbs")
+
+        @JvmField
+        @RegisterExtension
+        val db: RefreshDatabase = RefreshDatabase.template(
+            DriverManagerDataSource("jdbc:sqlite:build/template-root.db", null, null),
+            { file -> sqliteManager(file) },      // opens exactly the file it is given
+            SQLiteSchema::of,
+            listOf(CreateUsersTable()))
+            .directory(DIRECTORY)
+
+        fun sqliteManager(file: String): DatabaseManager {
+            val connection = ConnectionConfig.builder("main").driver("sqlite").database(file).build()
+            return DatabaseManager.builder()
+                .config(DatabaseConfig.builder().defaultConnection("main").connection(connection).build())
+                .connector(SQLiteConnector())
+                .build()
+        }
+    }
+    ```
+
+### How the template works
+
+- The template is named after the migration list: `diwan_tpl_<hash8>`, where the hash covers the
+  class, name and checksum of each migration, in order. A run with the same list reuses the template;
+  a changed list builds a new one next to it.
+- Each test gets one copy, named `diwan_t_<hash8>_<run>_<n>`. The copy is removed after the test.
+- The template is migrated through its own manager, which is closed before the first copy. Runs that
+  start together build it once.
+- The root data source gives the run one connection, held until the run ends, and the run's locks
+  live on it. Give the root a plain driver data source or a pool in session mode, not a pooler in
+  transaction mode.
+- The extension closes the manager it gets for each test, so keep each manager's pool small: a
+  maximum of 2 connections is enough for most tests.
+- A `perDatabase` manager must close its connections at once when it is closed. A pool that closes
+  them lazily can make dropping the copy fail. On PostgreSQL 13 or later the drop uses `FORCE`; on
+  older servers a slow close leaves the copy behind for the next run's sweep.
+
+### PostgreSQL
+
+- The role needs `CREATEDB`. Without it, the run fails before the first test, with an
+  `IllegalStateException` that names the role and shows the `ALTER ROLE ... CREATEDB` grant.
+- No other session may be connected to the template when a copy is made. The extension closes its
+  own sessions on the template after it builds it. A copy waits about two seconds for a session that
+  is just closing; a session that stays open makes the copy fail with an `IllegalStateException` that
+  names the template.
+- `strategy(CopyStrategy)` sets the strategy of every copy. `FILE_COPY` copies the template's files
+  and forces two checkpoints. `WAL_LOG` replays the template through the write-ahead log, with no
+  checkpoint but more log written. The default is `FILE_COPY` on PostgreSQL 15 or later and no
+  clause on older servers. An explicit strategy on an older server fails when the first copy is made.
+- `FILE_COPY` runs a checkpoint before and after each copy, which costs more on a busy shared
+  server. `WAL_LOG` suits small templates.
+- Measured with 20 tables and 10 tests, mean time per test: truncate mode 379 ms, `FILE_COPY`
+  299 ms, `WAL_LOG` 310 ms. The one-time set-up took 309 ms with `FILE_COPY` and 70 ms with
+  `WAL_LOG`.
+- On PostgreSQL 18 and later, the server setting `file_copy_method` set to `clone` can make
+  `FILE_COPY` copies faster on a filesystem that supports cloning.
+- A copy is dropped with `FORCE` on PostgreSQL 13 or later, which ends any session still on it.
+
+### SQLite
+
+- `directory(Path)` names the folder of the template and the copies. Without it, template mode
+  refuses to start with an `IllegalStateException`. On a PostgreSQL target, `directory(Path)` is
+  refused with an `IllegalStateException`.
+- The extension creates the copies directory. The folder of the root data source's own file must
+  exist before the run.
+- Each database is the file `<directory>/<name>.db`. `perDatabase` receives the absolute path of that
+  file and must open exactly that path. Otherwise the run fails, and the message gives the expected
+  and the opened path.
+- The template is migrated into a file of its own, checkpointed, and then moved into place. Each test
+  copies that file, and after the test removes the copy with its `-wal`, `-shm` and `-journal` files.
+- `strategy(CopyStrategy)` applies to PostgreSQL only; SQLite ignores it.
+
+### Options
+
+Each option returns a new extension, and an option outside template mode throws
+`IllegalStateException`.
+
+- `strategy(CopyStrategy)`: the copy strategy on PostgreSQL. See above.
+- `directory(Path)`: the folder for SQLite. Required there.
+- `dropStaleTemplates()`: when a run starts, drops the templates of other migration lists. On
+  PostgreSQL a template that another run is still copying from stays, and the refusal is logged. On
+  SQLite the other templates' files in the folder are deleted with their side and lock files; a
+  template whose build lock another run holds stays.
+
+### Parallel tests and several JVMs
+
+- Template mode works under `ExecutionMode.CONCURRENT`, unlike truncate mode.
+- Several JVMs can share one server or one folder, such as Gradle test forks with `maxParallelForks`
+  above 1. One run builds the template and the others reuse it. Each copy name carries the run id of
+  its JVM, so a run never takes another run's copy.
+
+### Leftovers
+
+- A run holds a lock while it lives: an advisory lock on PostgreSQL, a file lock on SQLite. When a
+  run starts, it removes the copies and build databases or files of runs that have ended. It never
+  removes its own, and it leaves the files of a live run alone.
+- A crashed run leaves its copies behind until the next run starts.
+- A copy that cannot be dropped after its test is logged, and the test's result does not change. The
+  next run removes it.
+- The sweep never removes a finished template that matches the current migration list. Older
+  templates stay unless `dropStaleTemplates()` is set.
+
+### Limits
+
+- In-memory SQLite is not supported in template mode: give a file path with `directory(Path)`.
+- Android is not supported: template mode refuses the `android` driver with an
+  `IllegalStateException`.
+- Template mode runs on PostgreSQL and SQLite only.
+
 ## Restart identities
 
 On PostgreSQL a rollback undoes the rows but not the sequence behind an `id`. Without the option, the ids a test gets depend on the tests that ran before it. `restartingIdentities()` sets the counters back before each test, so every test sees the same ids:

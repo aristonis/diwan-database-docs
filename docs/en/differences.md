@@ -66,6 +66,9 @@ it behaves differently on purpose. Each row is a choice, not a missing feature.
 | `foreignIdFor` on a model with a string key makes a `uuid` column | `ModelKeys` refuses a key that is not an integer, UUID or ULID with `IllegalArgumentException`; a key source can still say what it needs |
 | `comment()` on a table writes a table comment on PostgreSQL and MySQL; the SQLite grammar has no code for it | PostgreSQL writes it. SQLite and Android skip it without an error, as Laravel does. MySQL is not supported |
 | `temporary()` works on SQLite and PostgreSQL; the SQLite grammar has no check for a temporary table on a change | `schema.table` on a temporary table works on SQLite for plain additions; a change that needs a table rebuild is refused with `IllegalStateException` |
+| `createDatabase($name)` on PostgreSQL adds `encoding` from the connection's `charset` setting when it is set | No encoding clause. The new database takes the server's default encoding, or its template's encoding when it copies one |
+| `createDatabase($name)` on SQLite writes an empty file, which replaces a file that exists | Fails when the file exists, and never overwrites it |
+| `dropDatabaseIfExists($name)` on SQLite returns `true` when no file exists, and deletes only the main file | Returns `false` when no file exists, and also deletes the `-wal`, `-shm` and `-journal` files |
 
 ## Diwan additions
 
@@ -75,6 +78,9 @@ Laravel has none of these:
 - Index order and collation: `asc`, `desc` and `collate` on an index.
 - `DiwanError.table()`, the table a failure concerns.
 - `QueryFactory.restartIdentities(tables)` and `RefreshDatabase.rollback(...).restartingIdentities()`, which set PostgreSQL identity and `serial` counters back so rollback-mode tests see the same ids on every run. The Laravel database source has no per-test reset: its only `setval` sets a start value when a table is created.
+- `createDatabase(name, template)` and `createDatabase(name, template, CopyStrategy)`, which copy a database. `CopyStrategy` (`FILE_COPY` or `WAL_LOG`) picks how PostgreSQL 15 and later copy it. Laravel has no template argument.
+- `dropDatabaseIfExists(name, force)`, which ends the sessions on the database first, on PostgreSQL 13 and later. Laravel has no force.
+- `RefreshDatabase.template(...)`, a test mode in which each test gets its own copy of a migrated template, so tests may commit and run in parallel. Laravel has no test mode of this kind.
 
 ## Not in 0.2.0
 
