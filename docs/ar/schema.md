@@ -56,6 +56,66 @@
 
 الدالتان `create` و`table` تأخذان `Consumer<Blueprint>`. حين يحتاج استدعاء واحد إلى عدة جمل (جدول مع unique index)، تنفذها SQLite داخل transaction (معاملة) واحدة، فلا يبقى شيء ناقص عند الفشل. بادئة الجداول (table prefix) في الاتصال توضع قبل كل جدول وكل اسم index مولَّد.
 
+### الجداول المؤقتة (Temporary tables)
+
+=== "Java"
+
+    ```java
+    db.transaction(tx -> {
+        schema.on(tx).create("staging", table -> {
+            table.temporary();
+            table.id();
+            table.string("label");
+        });
+        tx.insert("insert into staging (label) values (?)", "first");
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { tx ->
+        schema.on(tx).create("staging") { table ->
+            table.temporary()
+            table.id()
+            table.string("label")
+        }
+        tx.insert("insert into staging (label) values (?)", "first")
+    }
+    ```
+
+`table.temporary()` داخل `create` تجعل الجدول مؤقتًا: تُكتب `create temporary table` على SQLite وPostgreSQL، وتحذفه قاعدة البيانات حين يُغلق اتصاله. خارج `create` ترمي الدالة `IllegalStateException`. و`table.isTemporary()` تعيد `true` إذا ضُبط هذا العلَم على الـ `Blueprint` (مخطط الجدول).
+
+الجدول المؤقت يعيش على اتصال واحد، فأنشئه واستعمله على الاتصال نفسه. استعمله داخل transaction (معاملة)، أو على قاعدة بيانات تحتفظ باتصال واحد فقط، مثل قاعدة SQLite في الذاكرة. وقاعدة SQLite على ملف تفتح اتصالًا جديدًا لكل استعمال خارج المعاملة، فالجدول الذي أُنشئ في استعمال لا يكون موجودًا في الاستعمال التالي. وعلى PostgreSQL لا يراه إلا الجلسة التي أنشأته، ويبقى بعد commit (تثبيت المعاملة).
+
+على SQLite يستطيع `schema.table` على جدول مؤقت إضافة عمود أو فهرس. أما التغيير الذي يحتاج إعادة بناء الجدول، مثل حذف عمود أو `change()`، فيرمي `IllegalStateException`. أما `schema.drop` و`dropIfExists` فتعملان كالمعتاد.
+
+فحص PostgreSQL لا يرى الجدول المؤقت: تبحث `hasTable` و`getTables` في الـ schemas العادية فقط، لا في `pg_temp`، فتعيد `hasTable` القيمة `false` له.
+
+### تعليقات الجدول (Table comments)
+
+=== "Java"
+
+    ```java
+    schema.create("posts", table -> {
+        table.id();
+        table.comment("Blog posts, one row per post");
+    });
+    schema.table("posts", table -> table.comment("Published posts"));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.create("posts") { table ->
+        table.id()
+        table.comment("Blog posts, one row per post")
+    }
+    schema.table("posts") { table -> table.comment("Published posts") }
+    ```
+
+`comment(text)` تضبط تعليق الجدول، عند الإنشاء أو التغيير. تكتبه PostgreSQL بجملة `comment on table`، وتُضاعَف علامات الاقتباس داخل النص، والنص الفارغ يحذف التعليق. أما SQLite فلا تملك تعليقات للجداول، فالدالة لا تكتب شيئًا ولا ترمي خطأً.
+
 ## أنواع الأعمدة
 
 الأسماء التي تتعارض مع كلمات Java المحجوزة لها لاحقة: `booleanColumn` و`floatColumn` و`doubleColumn` و`charColumn` و`enumColumn`. و`default` في Laravel هي `defaultValue`.
@@ -209,6 +269,28 @@
 
 `collate(column, name)` يأخذ اسم collation تعرفه قاعدة البيانات، مثل `NOCASE` على SQLite، ويُكتب كما هو. اربط الاستدعاءات: `table.index(...).where(...).desc(...)`. وتحتفظ إعادة بناء الجدول على SQLite بالترتيب التنازلي وبالـ collation.
 
+### فهارس التعبير الخام (Raw expression indexes)
+
+`rawIndex(expression, name)` تضيف فهرسًا عموده تعبير SQL، يُكتب في الجملة كما هو دون تهريب. الاسم إلزامي ولا يكون فارغًا. تعيد الدالة `IndexDefinition`، فتستدعي عليها `where` أو `whereNull` أو `whereNotNull` لفهرس جزئي. ضع الترتيب والـ collation داخل التعبير نفسه: `asc` و`desc` و`collate` ترمي `IllegalStateException` على الفهرس الخام.
+
+=== "Java"
+
+    ```java
+    table.rawIndex("lower(email)", "users_email_lower");
+    table.rawIndex("lower(email)", "users_email_live_lower").whereNull("deleted_at");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.rawIndex("lower(email)", "users_email_lower")
+    table.rawIndex("lower(email)", "users_email_live_lower").whereNull("deleted_at")
+    ```
+
+التعبير SQL خام، فابنِه من ثوابت، لا من مدخلات المستخدم. التعبير الذي يأتي من مدخلات المستخدم ثغرة لحقن SQL.
+
+على SQLite تحتفظ إعادة بناء الجدول بالفهرس، فتُعاد كتابة النص الذي خزّنته قاعدة البيانات. وتُرفض إعادة البناء التي تحذف عمودًا أو تعيد تسميته يذكره التعبير، وكذلك `renameIndex` على فهرس خام: احذف الفهرس وأعد إضافته بـ `rawIndex` ليأخذ الاسم الجديد. و`dropIndex` تحذفه على القاعدتين.
+
 ## المفاتيح الأجنبية (Foreign keys)
 
 === "Java"
@@ -251,6 +333,26 @@
     table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values")
     ```
 
+### عمود لمفتاح نموذج (foreignIdFor)
+
+`foreignIdFor(source)` تضيف العمود الذي يشير إلى مفتاح جدول آخر، وتسمّيه من المصدر: `user_id` لمفتاح المستخدم. نوع العمود يتبع المفتاح: عدد صحيح كبير غير موقّع (كما تفعل `foreignId`) لمفتاح صحيح، وعمود `uuid` لمفتاح UUID، وعمود `char` بطول 26 لمفتاح ULID. الدالة لا تضيف مفتاحًا أجنبيًا؛ تضيفه `constrained()`، فتشير إلى جدول المصدر ومفتاحه. و`constrained("teams")` تشير إلى جدول آخر مع الإبقاء على عمود مفتاح المصدر بدل `id`. والوسيط الثاني يسمّي العمود.
+
+=== "Java"
+
+    ```java
+    table.foreignIdFor(ModelKeys.of(User.class)).constrained().cascadeOnDelete();   // user_id -> users.id
+    table.foreignIdFor(ModelKeys.of(Team.class), "owner_team_id").nullable();      // no foreign key
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.foreignIdFor(ModelKeys.of(User::class.java)).constrained().cascadeOnDelete()   // user_id -> users.id
+    table.foreignIdFor(ModelKeys.of(Team::class.java), "owner_team_id").nullable()      // no foreign key
+    ```
+
+`ModelKeys` في الوحدة `diwan-database-eloquent`. `ModelKeys.of(User.class)` تقرأ الجدول والمفتاح ونوعه من نموذج مسجَّل، و`ModelKeys.of(user)` تقرأها من نسخة. النموذج بلا مفتاح أساسي يُرفض بـ `IllegalArgumentException`، والصنف غير المسجَّل بـ `UnregisteredModelException`. يُقرأ اسم الجدول بلا بادئة الاتصال، ومخطط الجدول يضيفها مرة واحدة. تأخذ `foreignIdFor` قيمة `ForeignKeySource`، وهي الواجهة التي تنفذها `ModelKeys`، ويمكن لأي مفتاح ليس نموذجًا أن ينفذها.
+
 ## قيود check والأعمدة المولَّدة وSQL الخام
 
 === "Java"
@@ -279,7 +381,7 @@
     schema.statement("create index lines_total on lines (total)")
     ```
 
-الـ SQL الذي تعطيه لـ `check` و`storedAs` و`virtualAs` و`rawColumn` و`statement` يدخل الجملة كما كُتب. ابنِه من ثوابت، لا من مدخلات المستخدم. أسماء الجداول والأعمدة حالة مختلفة: علامات الاقتباس داخل الاسم تُهرَّب، ولا يُرفض إلا الاسم الفارغ والاسم الذي فيه محارف تحكم. استخدم `schema.driverName()` (تعيد `"sqlite"` أو `"pgsql"`) حين يختلف الـ SQL الخام بين القواعد.
+الـ SQL الذي تعطيه لـ `check` و`storedAs` و`virtualAs` و`rawColumn` و`rawIndex` و`statement` يدخل الجملة كما كُتب. ابنِه من ثوابت، لا من مدخلات المستخدم. أسماء الجداول والأعمدة حالة مختلفة: علامات الاقتباس داخل الاسم تُهرَّب، ولا يُرفض إلا الاسم الفارغ والاسم الذي فيه محارف تحكم. استخدم `schema.driverName()` (تعيد `"sqlite"` أو `"pgsql"`) حين يختلف الـ SQL الخام بين القواعد.
 
 ## إعادة بناء الجدول على SQLite
 

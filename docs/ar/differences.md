@@ -58,6 +58,15 @@
 | `getColumns` تسرد الأعمدة المخفية للجدول الافتراضي (virtual table) | لا تُسرد |
 | `hasIndex` تقبل نوع طريقة الفهرس مثل `btree` | لا نوع طريقة: SQLite لا تملك واحدًا. وبدلًا منه يرشّح enum اسمه `IndexType` (`PRIMARY` و`UNIQUE`) |
 
+## تعديل المخطط
+
+| Laravel | Diwan |
+|---|---|
+| `foreignIdFor($model)` تقبل نموذجًا أو اسم صنف | `foreignIdFor` تأخذ `ForeignKeySource`، و`ModelKeys.of(User.class)` تبني واحدًا من نموذج |
+| `foreignIdFor` على نموذج مفتاحه نصي تُنشئ عمود `uuid` | `ModelKeys` ترفض أي مفتاح ليس عددًا صحيحًا ولا UUID ولا ULID برمي `IllegalArgumentException` |
+| `comment()` على الجدول تكتب تعليقه على PostgreSQL وMySQL، وليس لـ grammar الـ SQLite كود له | تكتبه PostgreSQL. وتتخطاه SQLite وAndroid بلا خطأ، كما يفعل Laravel. وMySQL غير مدعومة |
+| `temporary()` تعمل على SQLite وPostgreSQL، ولا يتحقق grammar الـ SQLite من الجدول المؤقت عند تغييره | تعمل `schema.table` على جدول مؤقت في SQLite للإضافات البسيطة؛ ويُرفض التغيير الذي يحتاج إعادة بناء الجدول برمي `IllegalStateException` |
+
 ## إضافات Diwan
 
 لا يملك Laravel أيًّا منها:
