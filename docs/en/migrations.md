@@ -246,8 +246,20 @@ none for failures; here you register on the builder.
 
 ## Migration lock
 
-Nothing stops two processes from migrating at once unless you plug in a lock. PostgreSQL has one
-built on an advisory lock.
+Nothing stops two processes from migrating at once unless a lock is held. The migrator takes the lock
+before a run, rollback or reset, and releases it when the call ends, whether it succeeded or failed.
+Status and pretend calls take no lock. The lock depends on the database:
+
+| Database | Lock | Where the lock lives |
+|---|---|---|
+| PostgreSQL | `PostgresMigrationLock`, a session advisory lock | A session on the server. If the process dies, the server ends the session and frees the lock. |
+| SQLite or Android, file database | `FileMigrationLock` | A file beside the database named `<database>.migrate.lock`. The operating system frees the lock if the process dies. The file is left in place after each run. |
+| SQLite or Android, in-memory database | None | Nothing is shared with another process, so there is nothing to lock. |
+
+The manager gives each connection its lock, as in the examples below. The default wait is 60 seconds.
+On SQLite and Android, the `lock_wait` option sets it, such as `5s` or `500ms`. On PostgreSQL,
+`lock_wait` sets the `lock_timeout` of the sessions instead, and the lock keeps its own 60-second
+wait, which you can change with `PostgresMigrationLock(dataSource, name, wait, unit)`.
 
 === "Java"
 
@@ -285,7 +297,28 @@ Without a manager, build the migrator on the grammar module and pass the lock yo
         .build()
     ```
 
-For another database, implement `MigrationLock` (`acquire()` and `release()`).
+On SQLite or Android, pass `new FileMigrationLock(() -> databaseFile)` the same way.
+
+Some details that apply to the locks above:
+
+- Two migrators in one JVM take turns on the same lock too, so the second waits for the first.
+- Network file systems may ignore file locks, and then the lock protects nothing. Keep a SQLite file
+  that is migrated on a local disk.
+- On Android the lock opens the database first, so the helper's own `onCreate` or `onUpgrade`
+  runs before the lock is held. Keep schema changes in migrations, not in the helper.
+- A `DataSource` you supply gets the file lock only when the `database` or `url` setting names the
+  file. Without either setting, that connection has no lock.
+- The PostgreSQL lock holds one session from the pool for the whole run, and the migrator needs
+  another, so a pool must allow at least two sessions. With a pool of one, the migrator waits for the
+  pool's own timeout and then fails. The error carries a suppressed note that says the pool needs two
+  sessions.
+- On PostgreSQL, use one lock name per migrations table. Migrators on the same table share the name.
+  Migrators on different tables should use different names, or they wait for each other. Through
+  the manager, every connection uses the default name `diwan-migrations`, so build the lock yourself
+  with `new PostgresMigrationLock(dataSource, name)` to give a table its own name.
+
+For another database, implement `MigrationLock`: `acquire()` and `release()`. Override
+`explain(RuntimeException)` when the lock can say why a failed run failed. The default adds nothing.
 
 ## Checksums
 
