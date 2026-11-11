@@ -63,6 +63,23 @@ migration's transaction.
 Three optional overrides: `withinTransaction()` to opt out of the wrapping transaction,
 `shouldRun()` to skip the migration, and `connection()` to send it to another named connection.
 
+### Order
+
+Pending migrations always run sorted by name, whatever order you add them in. A list built from
+several modules is one list to the migrator, so it is merged by name too: if module B's
+migrations sort before module A's and a B table refers to an A table, B's migration runs first
+and fails with an error such as `relation "accounts" does not exist`. Name migrations so the sort
+follows the dependencies, for example with the date they were written, or a prefix per module
+that sorts in dependency order.
+
+```text
+2026_01_10_000000_create_accounts_table   (module A, runs first)
+2026_01_12_000000_create_entries_table    (module B, refers to accounts)
+```
+
+Rollback and reset go the other way: the latest batch first, and inside a batch the highest name
+first. There is no option to run in the order of the list.
+
 ## Run and undo
 
 `manager.migrator(name)` returns a `Migrator.Builder` for that connection, built from its configuration. Without a manager, use `Migrator.builder(SQLiteSchema.of(connection))` or the `PostgresSchema` equivalent.

@@ -194,6 +194,16 @@ The first test class that uses the extension runs `Migrator.fresh()`: it drops e
 
 The same connection with a different migration list in the same run is refused with `IllegalStateException`, because migrating again would drop the tables of the classes that already ran. Migrations are compared by class and name, so editing a migration's body inside one run is not noticed.
 
+## One database, one way to migrate
+
+The extension owns the schema of its connection: once per run it drops every table and runs its
+list into the default `migrations` table. A test class that runs your application's own migrator,
+or one migrator per module, on the same database collides with it: the tables already exist, so
+that migrator fails with an error such as `relation "accounts" already exists`, or its `fresh()`
+drops the tables the extension built for the other classes. Every class on one database should
+use the extension with the same migration list. A class that must migrate another way gets its
+own database.
+
 ## Assertions
 
 | Method | Passes when |

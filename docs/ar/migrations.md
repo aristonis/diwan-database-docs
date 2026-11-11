@@ -57,6 +57,17 @@
 
 ثلاثة overrides اختيارية: `withinTransaction()` للخروج من الـ transaction المحيطة، و`shouldRun()` لتخطي الـ migration، و`connection()` لإرسالها إلى اتصال مسمى آخر.
 
+### الترتيب
+
+تُنفَّذ الـ migrations المعلقة دائمًا مرتبة بالاسم، أيًّا كان الترتيب الذي أضفتها به. القائمة المبنية من عدة modules هي قائمة واحدة عند الـ migrator، فتُدمج بالاسم أيضًا: إن كانت أسماء migrations الـ module ب تُرتَّب قبل أسماء الـ module أ، وكان جدول في ب يشير إلى جدول في أ، فستُنفذ migration ب أولًا وتفشل بخطأ مثل `relation "accounts" does not exist`. سمِّ الـ migrations بحيث يتبع الترتيبُ الاعتمادياتِ، مثلًا بتاريخ كتابتها، أو ببادئة لكل module تُرتَّب بحسب الاعتماد.
+
+```text
+2026_01_10_000000_create_accounts_table   (module أ، تُنفذ أولًا)
+2026_01_12_000000_create_entries_table    (module ب، تشير إلى accounts)
+```
+
+الـ rollback والـ reset يسيران بالعكس: آخر batch أولًا، وداخل الـ batch الاسم الأعلى أولًا. لا يوجد خيار للتنفيذ بترتيب القائمة.
+
 ## التشغيل والتراجع
 
 تعيد `manager.migrator(name)` كائن `Migrator.Builder` لذلك الاتصال، مبنيًا من إعداده. بدون manager استعمل `Migrator.builder(SQLiteSchema.of(connection))` أو ما يقابله في `PostgresSchema`.
