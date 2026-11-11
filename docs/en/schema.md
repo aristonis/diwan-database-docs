@@ -59,6 +59,66 @@ grammar of your database turns it into SQL.
 and its unique index), SQLite runs them in one transaction, so a failure leaves nothing behind. The
 connection's table prefix goes in front of every table and generated index name.
 
+### Temporary tables
+
+=== "Java"
+
+    ```java
+    db.transaction(tx -> {
+        schema.on(tx).create("staging", table -> {
+            table.temporary();
+            table.id();
+            table.string("label");
+        });
+        tx.insert("insert into staging (label) values (?)", "first");
+    });
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    db.transaction { tx ->
+        schema.on(tx).create("staging") { table ->
+            table.temporary()
+            table.id()
+            table.string("label")
+        }
+        tx.insert("insert into staging (label) values (?)", "first")
+    }
+    ```
+
+`table.temporary()` in `create` makes a temporary table: `create temporary table` on SQLite and PostgreSQL. The database drops it when its connection closes. Outside `create`, the call throws `IllegalStateException`. `table.isTemporary()` tells whether the blueprint has the flag.
+
+A temporary table lives on one connection, so create it and use it on the same connection. Use it inside a transaction, or on a database that keeps a single connection, such as an in-memory SQLite database. A SQLite file database opens a new connection for each use outside a transaction, so a table created in one use is not there in the next. On PostgreSQL only the session that created the table sees it, and it survives the commit of its transaction.
+
+On SQLite `schema.table` on a temporary table can add a column or an index. A change that needs a table rebuild, such as dropping a column or `change()`, throws `IllegalStateException`. `schema.drop` and `dropIfExists` still work.
+
+PostgreSQL inspection does not see a temporary table. `hasTable` and `getTables` search only the ordinary schemas, not `pg_temp`, so `hasTable` returns `false` for it.
+
+### Table comments
+
+=== "Java"
+
+    ```java
+    schema.create("posts", table -> {
+        table.id();
+        table.comment("Blog posts, one row per post");
+    });
+    schema.table("posts", table -> table.comment("Published posts"));
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    schema.create("posts") { table ->
+        table.id()
+        table.comment("Blog posts, one row per post")
+    }
+    schema.table("posts") { table -> table.comment("Published posts") }
+    ```
+
+`comment(text)` sets the comment of the table, on create or on change. PostgreSQL writes it with `comment on table`, with quotes in the text doubled. An empty text removes the comment. SQLite has no table comments: the call writes nothing and raises no error.
+
 ## Column types
 
 Names that clash with Java keywords carry a suffix: `booleanColumn`, `floatColumn`, `doubleColumn`,
@@ -236,6 +296,28 @@ default index name still uses only the column names.
 writes it as given. Chain the calls: `table.index(...).where(...).desc(...)`. A SQLite table rebuild
 keeps descending order and collations.
 
+### Raw expression indexes
+
+`rawIndex(expression, name)` adds an index whose column is an SQL expression, written into the statement as it is. The name is required and must not be blank. The call returns the index definition, so `where`, `whereNull` and `whereNotNull` make a partial index. Put the order and the collation inside the expression: `asc`, `desc` and `collate` throw `IllegalStateException` on a raw index.
+
+=== "Java"
+
+    ```java
+    table.rawIndex("lower(email)", "users_email_lower");
+    table.rawIndex("lower(email)", "users_email_live_lower").whereNull("deleted_at");
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.rawIndex("lower(email)", "users_email_lower")
+    table.rawIndex("lower(email)", "users_email_live_lower").whereNull("deleted_at")
+    ```
+
+The expression is raw SQL. It is not quoted, so build it from constants, never from user input. An expression that comes from input is an SQL injection point.
+
+On SQLite a table rebuild keeps the index, with the text the database stored. A rebuild that drops or renames a column the expression names is refused, and so is `renameIndex` on a raw index: drop the index and add it again with `rawIndex` to rename it. `dropIndex` drops it on both databases.
+
 ## Foreign keys
 
 === "Java"
@@ -281,6 +363,26 @@ Name the key yourself with the third argument of `constrained`, or with the seco
     table.foreignId("attribute_id").references("id", "pav_attribute_fk").on("product_attribute_values")
     ```
 
+### Columns for a model's key
+
+`foreignIdFor(source)` adds the column that points at another table's key, and names it after the source: `user_id` for a user. The column type follows the key. An integer key gives an unsigned big integer, as `foreignId` does; a UUID key gives a `uuid` column; a ULID key gives a 26-character `char` column. The call adds no foreign key. `constrained()` adds one that references the source's table and key column. `constrained("teams")` names another table but keeps the source's key column instead of `id`. A second argument names the column.
+
+=== "Java"
+
+    ```java
+    table.foreignIdFor(ModelKeys.of(User.class)).constrained().cascadeOnDelete();   // user_id -> users.id
+    table.foreignIdFor(ModelKeys.of(Team.class), "owner_team_id").nullable();      // no foreign key
+    ```
+
+=== "Kotlin"
+
+    ```kotlin
+    table.foreignIdFor(ModelKeys.of(User::class.java)).constrained().cascadeOnDelete()   // user_id -> users.id
+    table.foreignIdFor(ModelKeys.of(Team::class.java), "owner_team_id").nullable()      // no foreign key
+    ```
+
+`ModelKeys` is in the `diwan-database-eloquent` artifact. `ModelKeys.of(User.class)` reads the table, key and key kind of a registered model; `ModelKeys.of(user)` reads them from an instance. A model with no primary key is refused with `IllegalArgumentException`, and an unregistered class with `UnregisteredModelException`. The table name is read without the connection's prefix, which the blueprint adds once. `foreignIdFor` takes a `ForeignKeySource`, the interface `ModelKeys` implements; a key that is not a model can implement it too.
+
 ## Check constraints, generated columns and raw SQL
 
 === "Java"
@@ -309,8 +411,8 @@ Name the key yourself with the third argument of `constrained`, or with the seco
     schema.statement("create index lines_total on lines (total)")
     ```
 
-The SQL you give to `check`, `storedAs`, `virtualAs`, `rawColumn` and `statement` goes into the
-statement as written. Build it from constants, never from user input. Table and column names are
+The SQL you give to `check`, `storedAs`, `virtualAs`, `rawColumn`, `rawIndex` and `statement` goes
+into the statement as written. Build it from constants, never from user input. Table and column names are
 different: quotes inside a name are escaped, and only empty names and names with control characters
 are refused. Use `schema.driverName()` (`"sqlite"` or `"pgsql"`) when raw SQL differs by database.
 

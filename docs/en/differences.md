@@ -58,6 +58,15 @@ it behaves differently on purpose. Each row is a choice, not a missing feature.
 | `getColumns` lists the hidden columns of a virtual table | Left out |
 | `hasIndex` takes an index method type such as `btree` | No method type: SQLite has none. An `IndexType` enum (`PRIMARY`, `UNIQUE`) filters instead |
 
+## Schema changes
+
+| Laravel | Diwan |
+|---|---|
+| `foreignIdFor($model)` takes a model or a class name | `foreignIdFor` takes a `ForeignKeySource`; `ModelKeys.of(User.class)` builds one from a model |
+| `foreignIdFor` on a model with a string key makes a `uuid` column | `ModelKeys` refuses a key that is not an integer, UUID or ULID with `IllegalArgumentException`; a key source can still say what it needs |
+| `comment()` on a table writes a table comment on PostgreSQL and MySQL; the SQLite grammar has no code for it | PostgreSQL writes it. SQLite and Android skip it without an error, as Laravel does. MySQL is not supported |
+| `temporary()` works on SQLite and PostgreSQL; the SQLite grammar has no check for a temporary table on a change | `schema.table` on a temporary table works on SQLite for plain additions; a change that needs a table rebuild is refused with `IllegalStateException` |
+
 ## Diwan additions
 
 Laravel has none of these:
