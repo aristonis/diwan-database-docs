@@ -73,6 +73,7 @@ Override these methods to change the defaults:
 | `perPage()` | the page size for `paginate()` with no argument |
 | `softDeletes()`, `deletedAtColumn()` | off, `deleted_at` |
 | `attributeEncrypter()` | no encrypter (an `encrypted` cast on a non-null value then fails) |
+| `attributeHasher()` | no hasher (a `hashed` cast on a non-null value then fails) |
 
 The plural comes from a short English rule set. Override `table()` when it guesses wrong.
 
@@ -126,6 +127,7 @@ Declare casts in `casts()` with Laravel's string form or the typed factories in 
                 .put("settings", "object")                      // Map
                 .put("secret", "encrypted")                     // String, encrypted
                 .put("payload", "encrypted:json")               // Map or List, encrypted
+                .put("password", "hashed")                      // String, hashed
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -228,6 +230,68 @@ Keep these limits in mind:
 - Diwan calls `attributeEncrypter()` on every read, write and dirty check, so return one shared,
   thread-safe instance. Use an authenticated cipher with a fresh nonce per value, load keys from
   the environment or a key store, and keep plaintext and keys out of exception messages.
+
+A `hashed` cast stores a one-way hash of a `String` in a text column. The cast string is `hashed`;
+`Casts.hashed()` is the typed form. Diwan does no hashing. You supply an `AttributeHasher` by
+overriding `attributeHasher()` on the model, and it wraps your own hash library. Use a proper
+password hash, bcrypt or argon2, and return one shared, thread-safe instance:
+
+=== "Java"
+    ```java
+    public final class MyHasher implements AttributeHasher {
+        @Override
+        public String hash(String plain) { return yourOwnHash.make(plain); }
+
+        @Override
+        public boolean isHashed(String value) { return yourOwnHash.isHash(value); }
+
+        @Override
+        public boolean isCurrent(String hashed) { return yourOwnHash.isUpToDate(hashed); }  // override to refuse hashes below your minimum cost
+    }
+
+    // in the model
+    private static final AttributeHasher HASHER = new MyHasher();
+
+    @Override
+    protected AttributeHasher attributeHasher() { return HASHER; }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class MyHasher : AttributeHasher {
+        override fun hash(plain: String): String = yourOwnHash.make(plain)
+
+        override fun isHashed(value: String): Boolean = yourOwnHash.isHash(value)
+
+        override fun isCurrent(hashed: String): Boolean = yourOwnHash.isUpToDate(hashed)  // override to refuse hashes below your minimum cost
+    }
+
+    private val HASHER = MyHasher()  // one shared instance
+
+    // in the model
+    override fun attributeHasher(): AttributeHasher = HASHER
+    ```
+
+Keep these limits in mind:
+
+- The cast is write-only. A read returns the stored hash, and verifying a password is your hasher's
+  job.
+- The cast takes a `String` only. Any other value reaches you as an `InvalidCastException`.
+- A value that `isHashed` accepts is already a hash. It is kept as given if `isCurrent` returns
+  `true` and refused otherwise. So a request that sends a hash-shaped value skips your hasher and
+  your password rules. Validate untrusted input as plain text first, or keep the attribute out of
+  `fillable()` and set it yourself. Make `isHashed` match the full format and length, and override
+  `isCurrent` to refuse hashes below your minimum cost.
+- Verifying, constant-time comparison and input limits (bcrypt reads only the first 72 bytes) are
+  your hash library's job. Cap the input length before you set it.
+- A null value stays SQL NULL and the hasher is not called.
+- An exception from the hasher, or a non-null value with no hasher, reaches you as an
+  `InvalidCastException` whose cause is the original exception.
+- Setting the same plain value again is dirty when your hasher's output differs, as a salted hash
+  does.
+- `toMap()` and `toJson()` return the hash. List hashed attributes in `hidden()`.
+- Use a text column wide enough for the hash.
+- Only `setAttribute` and `fill` hash. Raw attribute writes and query builder inserts or updates
+  store what you pass.
 
 Date formats are Java `DateTimeFormatter` patterns. Write `yyyy-MM-dd`, not PHP's `Y-m-d`: the PHP
 form compiles in Java and means something else.
@@ -640,6 +704,8 @@ page. `simplePaginate` and `cursorPaginate` work as on the query builder.
   against `true`.
 - Diwan does no cryptography. An encrypted column must be text, cannot be used in a `where`
   clause, and an encrypter failure surfaces as `InvalidCastException`.
+- Diwan does no hashing. A hashed column must be text, a `hashed` cast takes a `String` only,
+  and a hasher failure surfaces as `InvalidCastException`.
 - Listeners and scopes belong to the class registered with `ModelQuery.of`; a subclass registered
   separately has its own list.
 
@@ -665,7 +731,9 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | Connection access: the model's connection and its name, binding the model to a query factory (`setConnection`), the factory it uses, and a new base query builder on the model's table. | `post.newBaseQuery().where("id", 1)` |
 | `Casts.instant` | `Casts` | A cast that stores an `Instant` whatever the model's timestamp format, for `Blueprint.instant` columns. Timestamp columns also need `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
 | `Casts.encrypted` | `Casts` | The `encrypted` cast: `encrypted()` stores a string as the encrypter's text, `encrypted(Cast)` wraps another cast (`Casts.json()`, `Casts.jsonUnicode()`, `Casts.collection()`, `Casts.object()`). The model needs an `attributeEncrypter()`. | `.put("secret", Casts.encrypted())` |
+| `Casts.hashed` | `Casts` | The `hashed` cast: stores a `String` as the hasher's hash and takes a `String` only. The model needs an `attributeHasher()`. | `.put("password", Casts.hashed())` |
 | `attributeEncrypter` `getAttributeEncrypter` | `Model` | The encrypter the model's `encrypted` casts use: override `attributeEncrypter()` to return your `AttributeEncrypter`, and `getAttributeEncrypter()` reads it. None by default. | `post.getAttributeEncrypter()` |
+| `attributeHasher` `getAttributeHasher` | `Model` | The hasher the model's `hashed` casts use: override `attributeHasher()` to return your `AttributeHasher`, and `getAttributeHasher()` reads it. None by default. | `user.getAttributeHasher()` |
 | `Casts.decimal` | `Casts` | `decimal(scale)` is the rounding `decimal:N` cast. `decimal(precision, scale[, mode])` is the strict cast: precision and scale as in `Blueprint.decimal`, extra decimals refused unless a rounding mode is given. | `.put("total", Casts.decimal(6, 2))` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | Time and JSON settings: the codec behind JSON casts and the JSON form, the pattern of text timestamps, how timestamps are written, and the clock the model reads timestamps from. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | Timestamp columns: the created-at, updated-at and deleted-at column names (the last one also qualified by table), and whether the model writes timestamps now. | `post.usesTimestamps()` |

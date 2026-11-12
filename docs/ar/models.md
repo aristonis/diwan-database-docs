@@ -73,6 +73,7 @@
 | `perPage()` | حجم الصفحة في `paginate()` بلا وسيط |
 | `softDeletes()` و`deletedAtColumn()` | معطّل، `deleted_at` |
 | `attributeEncrypter()` | لا encrypter (فيفشل cast من نوع `encrypted` على قيمة غير null) |
+| `attributeHasher()` | لا hasher (فيفشل cast من نوع `hashed` على قيمة غير null) |
 
 يأتي الجمع من مجموعة قصيرة من القواعد الإنجليزية. تجاوز `table()` حين يخطئ التخمين.
 
@@ -125,6 +126,7 @@
                 .put("settings", "object")                      // Map
                 .put("secret", "encrypted")                     // String, encrypted
                 .put("payload", "encrypted:json")               // Map or List, encrypted
+                .put("password", "hashed")                      // String, hashed
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -216,6 +218,59 @@
 - تعيد `toMap()` و`toJson()` القيمة بعد فك التشفير. أضف الـ attributes المشفَّرة إلى `hidden()` ما لم تقصد إظهارها.
 - لا يشفّر إلا `setAttribute` و`fill`. الكتابة المباشرة للـ attributes وعمليات الإدراج أو التحديث عبر الـ query builder تخزّن ما تمرّره كما هو.
 - تستدعي Diwan الدالة `attributeEncrypter()` في كل قراءة وكتابة وفحص dirty، فأعد نسخة واحدة مشتركة آمنة مع الخيوط. استخدم تشفيرًا موثَّقًا (authenticated) مع nonce جديد لكل قيمة، وحمّل المفاتيح من البيئة أو من مخزن مفاتيح، ولا تضع النص الصريح أو المفاتيح في رسائل الاستثناءات.
+
+يخزّن cast من نوع `hashed` تجزئة أحادية الاتجاه لقيمة `String` في عمود نصي. صيغة الـ cast هي
+`hashed`؛ و`Casts.hashed()` هي الصيغة المنمَّطة. لا تقوم Diwan بأي تجزئة. أنت تقدّم
+`AttributeHasher` بتجاوز `attributeHasher()` في النموذج، وهو يغلّف مكتبة التجزئة الخاصة بك. استعمل
+تجزئة كلمات مرور سليمة، bcrypt أو argon2، وأعد نسخة واحدة مشتركة آمنة مع الخيوط:
+
+=== "Java"
+    ```java
+    public final class MyHasher implements AttributeHasher {
+        @Override
+        public String hash(String plain) { return yourOwnHash.make(plain); }
+
+        @Override
+        public boolean isHashed(String value) { return yourOwnHash.isHash(value); }
+
+        @Override
+        public boolean isCurrent(String hashed) { return yourOwnHash.isUpToDate(hashed); }  // override to refuse hashes below your minimum cost
+    }
+
+    // in the model
+    private static final AttributeHasher HASHER = new MyHasher();
+
+    @Override
+    protected AttributeHasher attributeHasher() { return HASHER; }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class MyHasher : AttributeHasher {
+        override fun hash(plain: String): String = yourOwnHash.make(plain)
+
+        override fun isHashed(value: String): Boolean = yourOwnHash.isHash(value)
+
+        override fun isCurrent(hashed: String): Boolean = yourOwnHash.isUpToDate(hashed)  // override to refuse hashes below your minimum cost
+    }
+
+    private val HASHER = MyHasher()  // one shared instance
+
+    // in the model
+    override fun attributeHasher(): AttributeHasher = HASHER
+    ```
+
+تذكّر هذه الحدود:
+
+- الـ cast للكتابة فقط. القراءة تعيد التجزئة المخزَّنة، والتحقق من كلمة المرور مهمة الـ hasher الخاص بك.
+- يقبل الـ cast قيمة `String` فقط. أي قيمة أخرى تصلك على هيئة `InvalidCastException`.
+- القيمة التي يقبلها `isHashed` هي تجزئة أصلًا. تبقى كما هي إن أعادت `isCurrent` القيمة `true`، وتُرفض في غير ذلك. لذا فالطلب الذي يرسل قيمة على شكل تجزئة يتخطّى الـ hasher وقواعد كلمة المرور لديك. تحقّق من المدخلات غير الموثوقة كنص صريح أولًا، أو أبقِ الـ attribute خارج `fillable()` واضبطه بنفسك. اجعل `isHashed` تطابق الصيغة والطول كاملين، وتجاوز `isCurrent` لترفض التجزئات الأضعف من الحد الأدنى للكلفة لديك.
+- التحقق والمقارنة ثابتة الزمن وحدود المدخلات (يقرأ bcrypt أول 72 بايت فقط) من مهام مكتبة التجزئة لديك. حدّد طول المدخلات قبل ضبطها.
+- القيمة null تبقى SQL NULL ولا يُستدعى الـ hasher.
+- الاستثناء الصادر من الـ hasher، أو قيمة غير null بلا hasher، يصلك على هيئة `InvalidCastException` سببها (cause) هو الاستثناء الأصلي.
+- ضبط القيمة الصريحة نفسها مرة أخرى يجعل الـ attribute dirty حين يختلف ناتج الـ hasher، كما في التجزئة ذات الـ salt.
+- تعيد `toMap()` و`toJson()` التجزئة. أضف الـ attributes المجزَّأة إلى `hidden()`.
+- استعمل عمودًا نصيًّا واسعًا بما يكفي للتجزئة.
+- لا تجزّئ إلا `setAttribute` و`fill`. الكتابة المباشرة للـ attributes وعمليات الإدراج أو التحديث عبر الـ query builder تخزّن ما تمرّره كما هو.
 
 صيغ التواريخ هي أنماط `DateTimeFormatter` في Java. اكتب `yyyy-MM-dd` لا `Y-m-d` الخاصة بـ PHP: تُترجَم صيغة PHP في Java
 لكنها تعني شيئًا آخر.
@@ -590,6 +645,7 @@
 - النماذج ليست آمنة للاستعمال من عدة threads. شارك `ModelQuery`، وأعطِ كل thread نسخه الخاصة.
 - من دون cast من نوع `bool`، قيمة `Boolean` تُضبط على عمود SQLite تُقرأ `1` وتبقى dirty مقابل `true`.
 - لا تقوم Diwan بأي تشفير. العمود المشفَّر يجب أن يكون نصيًّا، ولا يُستعمل في جملة `where`، وفشل الـ encrypter يظهر على هيئة `InvalidCastException`.
+- لا تقوم Diwan بأي تجزئة. العمود المجزَّأ يجب أن يكون نصيًّا، وcast من نوع `hashed` يقبل `String` فقط، وفشل الـ hasher يظهر على هيئة `InvalidCastException`.
 - تنتمي الـ listeners والـ scopes إلى الصنف المسجَّل عبر `ModelQuery.of`؛ والصنف الفرعي المسجَّل منفصلًا له قائمته الخاصة.
 
 انظر [العلاقات](relations.md) و[الفروق عن Laravel](differences.md) و[الأخطاء](errors.md).
@@ -613,7 +669,9 @@
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | الوصول للاتصال: اتصال النموذج واسمه، وربط النموذج بـ query factory (`setConnection`)، والـ factory الذي يستخدمه، وbuilder أساسي جديد على جدول النموذج. | `post.newBaseQuery().where("id", 1)` |
 | `Casts.instant` | `Casts` | cast يخزّن `Instant` مهما كانت صيغة طوابع النموذج، لأعمدة `Blueprint.instant`. وأعمدة الطوابع تحتاج أيضًا `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
 | `Casts.encrypted` | `Casts` | الـ cast من نوع `encrypted`: الدالة `encrypted()` تخزّن نصًّا بصيغة ما ينتجه الـ encrypter، و`encrypted(Cast)` تغلّف cast آخر (`Casts.json()` أو `Casts.jsonUnicode()` أو `Casts.collection()` أو `Casts.object()`). يحتاج النموذج إلى `attributeEncrypter()`. | `.put("secret", Casts.encrypted())` |
+| `Casts.hashed` | `Casts` | الـ cast من نوع `hashed`: يخزّن `String` بصيغة تجزئة الـ hasher ويقبل `String` فقط. يحتاج النموذج إلى `attributeHasher()`. | `.put("password", Casts.hashed())` |
 | `attributeEncrypter` `getAttributeEncrypter` | `Model` | الـ encrypter الذي تستعمله casts النموذج من نوع `encrypted`: تجاوز `attributeEncrypter()` لتعيد `AttributeEncrypter` الخاص بك، و`getAttributeEncrypter()` تقرأه. لا يوجد افتراضيًا. | `post.getAttributeEncrypter()` |
+| `attributeHasher` `getAttributeHasher` | `Model` | الـ hasher الذي تستعمله casts النموذج من نوع `hashed`: تجاوز `attributeHasher()` لتعيد `AttributeHasher` الخاص بك، و`getAttributeHasher()` تقرأه. لا يوجد افتراضيًا. | `user.getAttributeHasher()` |
 | `Casts.decimal` | `Casts` | الدالة `decimal(scale)` هي الـ cast المقرِّب `decimal:N`. أما `decimal(precision, scale[, mode])` فهي الـ cast الصارم: precision وscale كما في `Blueprint.decimal`، والخانات العشرية الزائدة مرفوضة ما لم يُعطَ وضع تقريب. | `.put("total", Casts.decimal(6, 2))` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | إعدادات الوقت وJSON: الـ codec خلف casts الـ JSON وصيغة JSON، ونمط الطوابع النصية، وطريقة كتابة الطوابع، والساعة التي يقرأ منها النموذج الطوابع. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | أعمدة الطوابع: أسماء أعمدة created-at وupdated-at وdeleted-at (الأخير أيضًا مسبوقًا بالجدول)، وهل يكتب النموذج الطوابع الآن. | `post.usesTimestamps()` |
