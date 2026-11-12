@@ -72,6 +72,7 @@ Override these methods to change the defaults:
 | `uniqueIdKind()` | `UniqueIdKind.NONE`; `UUID` (version 7) or `ULID` generates the key on insert |
 | `perPage()` | the page size for `paginate()` with no argument |
 | `softDeletes()`, `deletedAtColumn()` | off, `deleted_at` |
+| `attributeEncrypter()` | no encrypter (an `encrypted` cast on a non-null value then fails) |
 
 The plural comes from a short English rule set. Override `table()` when it guesses wrong.
 
@@ -123,6 +124,8 @@ Declare casts in `casts()` with Laravel's string form or the typed factories in 
                 .put("options", "json")                         // Map or List
                 .put("tags", "collection")                      // List
                 .put("settings", "object")                      // Map
+                .put("secret", "encrypted")                     // String, encrypted
+                .put("payload", "encrypted:json")               // Map or List, encrypted
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -169,6 +172,62 @@ The `collection` cast reads a JSON array as a `List` and the `object` cast reads
 value. A null column, an empty string and the JSON text `null` read as `null`, and writing `null`
 stores SQL NULL. Both results can be changed in place like a `json` result, and writes encode as
 `json` does. For typed elements, a typed map or a DTO, implement `Cast<T>` yourself, as described above.
+
+An `encrypted` cast stores its value as text that an encrypter produces. The cast strings are
+`encrypted` (a `String`), `encrypted:array` and `encrypted:json` (a `Map` or `List`),
+`encrypted:collection` (a `List`) and `encrypted:object` (a `Map`); `Casts.encrypted()` and
+`Casts.encrypted(Cast)` are the typed forms. Diwan does no cryptography. You supply an
+`AttributeEncrypter` by overriding `attributeEncrypter()` on the model, and it holds your own cipher
+and keys:
+
+=== "Java"
+    ```java
+    public final class MyEncrypter implements AttributeEncrypter {
+        @Override
+        public String encrypt(String plain) { return yourOwnCipher.seal(plain); }
+
+        @Override
+        public String decrypt(String cipher) { return yourOwnCipher.open(cipher); }
+    }
+
+    // in the model
+    private static final AttributeEncrypter ENCRYPTER = new MyEncrypter();
+
+    @Override
+    protected AttributeEncrypter attributeEncrypter() { return ENCRYPTER; }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class MyEncrypter : AttributeEncrypter {
+        override fun encrypt(plain: String): String = yourOwnCipher.seal(plain)
+
+        override fun decrypt(cipher: String): String = yourOwnCipher.open(cipher)
+    }
+
+    private val ENCRYPTER = MyEncrypter()  // one shared instance
+
+    // in the model
+    override fun attributeEncrypter(): AttributeEncrypter = ENCRYPTER
+    ```
+
+Keep these limits in mind:
+
+- The column must be a text type, not `jsonb`.
+- An encrypted column cannot be used in a `where` clause, because the database holds only the
+  encrypter's output.
+- A null value stores SQL NULL and reads as `null` without calling the encrypter.
+- An exception from `encrypt` or `decrypt`, or a non-null value with no encrypter, reaches you as an
+  `InvalidCastException` whose cause is the original exception.
+- If `hasPreviousKeys()` returns `true`, an encrypted attribute whose stored text changed is dirty
+  even when the decrypted value is the same, so the next save re-encrypts it under the current key.
+  An encrypted JSON value that you only read also turns dirty.
+- `toMap()` and `toJson()` return the decrypted value. List encrypted attributes in `hidden()`
+  unless you mean to expose them.
+- Only `setAttribute` and `fill` encrypt. Raw attribute writes and query builder inserts or
+  updates store what you pass.
+- Diwan calls `attributeEncrypter()` on every read, write and dirty check, so return one shared,
+  thread-safe instance. Use an authenticated cipher with a fresh nonce per value, load keys from
+  the environment or a key store, and keep plaintext and keys out of exception messages.
 
 Date formats are Java `DateTimeFormatter` patterns. Write `yyyy-MM-dd`, not PHP's `Y-m-d`: the PHP
 form compiles in Java and means something else.
@@ -579,6 +638,8 @@ page. `simplePaginate` and `cursorPaginate` work as on the query builder.
 - Models are not thread-safe. Share the `ModelQuery`; give each thread its own instances.
 - Without a `bool` cast, a `Boolean` set on a SQLite column reads back as `1` and stays dirty
   against `true`.
+- Diwan does no cryptography. An encrypted column must be text, cannot be used in a `where`
+  clause, and an encrypter failure surfaces as `InvalidCastException`.
 - Listeners and scopes belong to the class registered with `ModelQuery.of`; a subclass registered
   separately has its own list.
 
@@ -603,6 +664,8 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | Model settings as the model resolves them: table, primary key name and type, whether the database assigns the key, the key qualified by table (`users.id`), a column qualified by table, the foreign key name other tables use for this model, the default page size and the unique id kind. | `post.getQualifiedKeyName()` |
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | Connection access: the model's connection and its name, binding the model to a query factory (`setConnection`), the factory it uses, and a new base query builder on the model's table. | `post.newBaseQuery().where("id", 1)` |
 | `Casts.instant` | `Casts` | A cast that stores an `Instant` whatever the model's timestamp format, for `Blueprint.instant` columns. Timestamp columns also need `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
+| `Casts.encrypted` | `Casts` | The `encrypted` cast: `encrypted()` stores a string as the encrypter's text, `encrypted(Cast)` wraps another cast (`Casts.json()`, `Casts.jsonUnicode()`, `Casts.collection()`, `Casts.object()`). The model needs an `attributeEncrypter()`. | `.put("secret", Casts.encrypted())` |
+| `attributeEncrypter` `getAttributeEncrypter` | `Model` | The encrypter the model's `encrypted` casts use: override `attributeEncrypter()` to return your `AttributeEncrypter`, and `getAttributeEncrypter()` reads it. None by default. | `post.getAttributeEncrypter()` |
 | `Casts.decimal` | `Casts` | `decimal(scale)` is the rounding `decimal:N` cast. `decimal(precision, scale[, mode])` is the strict cast: precision and scale as in `Blueprint.decimal`, extra decimals refused unless a rounding mode is given. | `.put("total", Casts.decimal(6, 2))` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | Time and JSON settings: the codec behind JSON casts and the JSON form, the pattern of text timestamps, how timestamps are written, and the clock the model reads timestamps from. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | Timestamp columns: the created-at, updated-at and deleted-at column names (the last one also qualified by table), and whether the model writes timestamps now. | `post.usesTimestamps()` |

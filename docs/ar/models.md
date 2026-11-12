@@ -72,6 +72,7 @@
 | `uniqueIdKind()` | `UniqueIdKind.NONE`؛ و`UUID` (الإصدار 7) أو `ULID` يولّد المفتاح عند الإدراج |
 | `perPage()` | حجم الصفحة في `paginate()` بلا وسيط |
 | `softDeletes()` و`deletedAtColumn()` | معطّل، `deleted_at` |
+| `attributeEncrypter()` | لا encrypter (فيفشل cast من نوع `encrypted` على قيمة غير null) |
 
 يأتي الجمع من مجموعة قصيرة من القواعد الإنجليزية. تجاوز `table()` حين يخطئ التخمين.
 
@@ -122,6 +123,8 @@
                 .put("options", "json")                         // Map or List
                 .put("tags", "collection")                      // List
                 .put("settings", "object")                      // Map
+                .put("secret", "encrypted")                     // String, encrypted
+                .put("payload", "encrypted:json")               // Map or List, encrypted
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -166,6 +169,53 @@
 العمود null والنص الفارغ والنص JSON `null` تُقرأ كلها `null`، وكتابة `null` تخزّن SQL NULL.
 يمكن تعديل النتيجتين في مكانهما كما في نتيجة `json`، وتُرمَّز الكتابة كما يفعل `json`.
 للعناصر المنمَّطة أو map منمَّط أو DTO، نفّذ `Cast<T>` بنفسك كما ورد أعلاه.
+
+يخزّن cast من نوع `encrypted` قيمته نصًّا ينتجه encrypter (المشفِّر). صيغ الـ cast هي
+`encrypted` (قيمة `String`) و`encrypted:array` و`encrypted:json` (قيمة `Map` أو `List`)
+و`encrypted:collection` (قيمة `List`) و`encrypted:object` (قيمة `Map`)؛ و`Casts.encrypted()` و
+`Casts.encrypted(Cast)` هما الصيغتان المنمَّطتان. لا تقوم Diwan بأي تشفير. أنت تقدّم
+`AttributeEncrypter` بتجاوز `attributeEncrypter()` في النموذج، وهو يحمل شيفرة التشفير ومفاتيحك أنت:
+
+=== "Java"
+    ```java
+    public final class MyEncrypter implements AttributeEncrypter {
+        @Override
+        public String encrypt(String plain) { return yourOwnCipher.seal(plain); }
+
+        @Override
+        public String decrypt(String cipher) { return yourOwnCipher.open(cipher); }
+    }
+
+    // in the model
+    private static final AttributeEncrypter ENCRYPTER = new MyEncrypter();
+
+    @Override
+    protected AttributeEncrypter attributeEncrypter() { return ENCRYPTER; }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class MyEncrypter : AttributeEncrypter {
+        override fun encrypt(plain: String): String = yourOwnCipher.seal(plain)
+
+        override fun decrypt(cipher: String): String = yourOwnCipher.open(cipher)
+    }
+
+    private val ENCRYPTER = MyEncrypter()  // one shared instance
+
+    // in the model
+    override fun attributeEncrypter(): AttributeEncrypter = ENCRYPTER
+    ```
+
+تذكّر هذه الحدود:
+
+- يجب أن يكون العمود من نوع نصي، لا `jsonb`.
+- لا يمكن استعمال عمود مشفَّر في جملة `where`، لأن قاعدة البيانات لا تحتفظ إلا بمخرجات الـ encrypter.
+- القيمة null تخزّن SQL NULL وتُقرأ `null` دون استدعاء الـ encrypter.
+- الاستثناء الصادر من `encrypt` أو `decrypt`، أو قيمة غير null بلا encrypter، يصلك على هيئة `InvalidCastException` سببها (cause) هو الاستثناء الأصلي.
+- إن أعادت `hasPreviousKeys()` القيمة `true`، فإن الـ attribute المشفَّر الذي تغيّر نصّه المخزَّن يكون dirty حتى لو بقيت القيمة بعد فك التشفير نفسها، فيعيد الحفظ التالي تشفيره بالمفتاح الحالي. وقيمة JSON المشفَّرة التي قرأتها فقط تصبح dirty أيضًا.
+- تعيد `toMap()` و`toJson()` القيمة بعد فك التشفير. أضف الـ attributes المشفَّرة إلى `hidden()` ما لم تقصد إظهارها.
+- لا يشفّر إلا `setAttribute` و`fill`. الكتابة المباشرة للـ attributes وعمليات الإدراج أو التحديث عبر الـ query builder تخزّن ما تمرّره كما هو.
+- تستدعي Diwan الدالة `attributeEncrypter()` في كل قراءة وكتابة وفحص dirty، فأعد نسخة واحدة مشتركة آمنة مع الخيوط. استخدم تشفيرًا موثَّقًا (authenticated) مع nonce جديد لكل قيمة، وحمّل المفاتيح من البيئة أو من مخزن مفاتيح، ولا تضع النص الصريح أو المفاتيح في رسائل الاستثناءات.
 
 صيغ التواريخ هي أنماط `DateTimeFormatter` في Java. اكتب `yyyy-MM-dd` لا `Y-m-d` الخاصة بـ PHP: تُترجَم صيغة PHP في Java
 لكنها تعني شيئًا آخر.
@@ -539,6 +589,7 @@
 
 - النماذج ليست آمنة للاستعمال من عدة threads. شارك `ModelQuery`، وأعطِ كل thread نسخه الخاصة.
 - من دون cast من نوع `bool`، قيمة `Boolean` تُضبط على عمود SQLite تُقرأ `1` وتبقى dirty مقابل `true`.
+- لا تقوم Diwan بأي تشفير. العمود المشفَّر يجب أن يكون نصيًّا، ولا يُستعمل في جملة `where`، وفشل الـ encrypter يظهر على هيئة `InvalidCastException`.
 - تنتمي الـ listeners والـ scopes إلى الصنف المسجَّل عبر `ModelQuery.of`؛ والصنف الفرعي المسجَّل منفصلًا له قائمته الخاصة.
 
 انظر [العلاقات](relations.md) و[الفروق عن Laravel](differences.md) و[الأخطاء](errors.md).
@@ -561,6 +612,8 @@
 | `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | إعدادات النموذج كما يحسمها: الجدول، واسم المفتاح الأساسي ونوعه، وهل تولّد قاعدة البيانات المفتاح، والمفتاح مسبوقًا باسم الجدول (`users.id`)، وعمود مسبوق باسم الجدول، واسم المفتاح الأجنبي الذي تستخدمه الجداول الأخرى لهذا النموذج، وحجم الصفحة الافتراضي، ونوع المعرّف الفريد. | `post.getQualifiedKeyName()` |
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | الوصول للاتصال: اتصال النموذج واسمه، وربط النموذج بـ query factory (`setConnection`)، والـ factory الذي يستخدمه، وbuilder أساسي جديد على جدول النموذج. | `post.newBaseQuery().where("id", 1)` |
 | `Casts.instant` | `Casts` | cast يخزّن `Instant` مهما كانت صيغة طوابع النموذج، لأعمدة `Blueprint.instant`. وأعمدة الطوابع تحتاج أيضًا `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
+| `Casts.encrypted` | `Casts` | الـ cast من نوع `encrypted`: الدالة `encrypted()` تخزّن نصًّا بصيغة ما ينتجه الـ encrypter، و`encrypted(Cast)` تغلّف cast آخر (`Casts.json()` أو `Casts.jsonUnicode()` أو `Casts.collection()` أو `Casts.object()`). يحتاج النموذج إلى `attributeEncrypter()`. | `.put("secret", Casts.encrypted())` |
+| `attributeEncrypter` `getAttributeEncrypter` | `Model` | الـ encrypter الذي تستعمله casts النموذج من نوع `encrypted`: تجاوز `attributeEncrypter()` لتعيد `AttributeEncrypter` الخاص بك، و`getAttributeEncrypter()` تقرأه. لا يوجد افتراضيًا. | `post.getAttributeEncrypter()` |
 | `Casts.decimal` | `Casts` | الدالة `decimal(scale)` هي الـ cast المقرِّب `decimal:N`. أما `decimal(precision, scale[, mode])` فهي الـ cast الصارم: precision وscale كما في `Blueprint.decimal`، والخانات العشرية الزائدة مرفوضة ما لم يُعطَ وضع تقريب. | `.put("total", Casts.decimal(6, 2))` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | إعدادات الوقت وJSON: الـ codec خلف casts الـ JSON وصيغة JSON، ونمط الطوابع النصية، وطريقة كتابة الطوابع، والساعة التي يقرأ منها النموذج الطوابع. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | أعمدة الطوابع: أسماء أعمدة created-at وupdated-at وdeleted-at (الأخير أيضًا مسبوقًا بالجدول)، وهل يكتب النموذج الطوابع الآن. | `post.usesTimestamps()` |
