@@ -120,6 +120,8 @@
                 .put("price", "decimal:2")                      // BigDecimal, scale 2
                 .put("is_admin", "bool")                        // Boolean
                 .put("options", "json")                         // Map or List
+                .put("tags", "collection")                      // List
+                .put("settings", "object")                      // Map
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -133,6 +135,8 @@
             .put("price", "decimal:2")                      // BigDecimal, scale 2
             .put("is_admin", "bool")                        // Boolean
             .put("options", "json")                         // Map or List
+            .put("tags", "collection")                      // List
+            .put("settings", "object")                      // Map
             .put("born_on", "date")                         // LocalDate
             .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
             .put("status", Casts.enumOf(Status::class.java))      // the enum constant
@@ -156,6 +160,12 @@
 البيانات المخزَّنة التالفة، مثل JSON مكسور أو `"abc"` تحت `int`، ترمي `InvalidCastException`. أمّا Laravel فتقرأ `null` أو `0` هنا.
 يقارن فحص التغيّر (dirty check) بالمعنى: JSON بالبنية، واللحظات كـ instants، والتواريخ كتواريخ. قراءة قيمة cast (تحويل نوع قيمة الـ attribute عند القراءة والكتابة) لا تجعل النموذج dirty أبدًا،
 لكن تعديل map أعادها cast من نوع `json` يفعل ذلك. ولكتابة cast خاص بك نفّذ `Cast<T>` (الدالتان `get` و`set`).
+
+يقرأ cast من نوع `collection` مصفوفة JSON على أنها `List`، ويقرأ cast من نوع `object` كائن JSON على أنه `Map` يحتفظ بترتيب المفاتيح المخزَّن.
+القيمة المخزَّنة من الشكل الآخر ترمي `InvalidCastException`، وكذلك كتابة قيمة من نوع خاطئ، ولا تحتوي أي من الرسالتين على القيمة.
+العمود null والنص الفارغ والنص JSON `null` تُقرأ كلها `null`، وكتابة `null` تخزّن SQL NULL.
+يمكن تعديل النتيجتين في مكانهما كما في نتيجة `json`، وتُرمَّز الكتابة كما يفعل `json`.
+للعناصر المنمَّطة أو map منمَّط أو DTO، نفّذ `Cast<T>` بنفسك كما ورد أعلاه.
 
 صيغ التواريخ هي أنماط `DateTimeFormatter` في Java. اكتب `yyyy-MM-dd` لا `Y-m-d` الخاصة بـ PHP: تُترجَم صيغة PHP في Java
 لكنها تعني شيئًا آخر.

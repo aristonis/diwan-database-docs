@@ -121,6 +121,8 @@ Declare casts in `casts()` with Laravel's string form or the typed factories in 
                 .put("price", "decimal:2")                      // BigDecimal, scale 2
                 .put("is_admin", "bool")                        // Boolean
                 .put("options", "json")                         // Map or List
+                .put("tags", "collection")                      // List
+                .put("settings", "object")                      // Map
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -134,6 +136,8 @@ Declare casts in `casts()` with Laravel's string form or the typed factories in 
             .put("price", "decimal:2")                      // BigDecimal, scale 2
             .put("is_admin", "bool")                        // Boolean
             .put("options", "json")                         // Map or List
+            .put("tags", "collection")                      // List
+            .put("settings", "object")                      // Map
             .put("born_on", "date")                         // LocalDate
             .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
             .put("status", Casts.enumOf(Status::class.java))      // the enum constant
@@ -158,6 +162,13 @@ Bad stored data, such as broken JSON or `"abc"` under `int`, throws `InvalidCast
 Laravel reads `null` or `0` there. The dirty check compares by meaning: JSON by structure, moments
 as instants, dates as dates. Reading a cast value never makes a model dirty, but changing a map a
 `json` cast returned does. For a cast of your own, implement `Cast<T>` (`get` and `set`).
+
+The `collection` cast reads a JSON array as a `List` and the `object` cast reads a JSON object as a
+`Map` that keeps the stored key order. A stored value of the other shape throws
+`InvalidCastException`, and so does writing a value of the wrong type; neither message holds the
+value. A null column, an empty string and the JSON text `null` read as `null`, and writing `null`
+stores SQL NULL. Both results can be changed in place like a `json` result, and writes encode as
+`json` does. For typed elements, a typed map or a DTO, implement `Cast<T>` yourself, as described above.
 
 Date formats are Java `DateTimeFormatter` patterns. Write `yyyy-MM-dd`, not PHP's `Y-m-d`: the PHP
 form compiles in Java and means something else.
