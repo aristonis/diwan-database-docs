@@ -128,6 +128,7 @@ Declare casts in `casts()` with Laravel's string form or the typed factories in 
                 .put("secret", "encrypted")                     // String, encrypted
                 .put("payload", "encrypted:json")               // Map or List, encrypted
                 .put("password", "hashed")                      // String, hashed
+                .put("token", "binary:uuid")                    // UUID, 16 bytes
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -292,6 +293,50 @@ Keep these limits in mind:
 - Use a text column wide enough for the hash.
 - Only `setAttribute` and `fill` hash. Raw attribute writes and query builder inserts or updates
   store what you pass.
+
+A binary cast stores a UUID or a ULID as 16 bytes. The cast strings are `binary:uuid` and
+`binary:ulid`; `Casts.binaryUuid()` and `Casts.binaryUlid()` are the typed forms. Use a `binary()`
+column, not `uuid()`:
+
+=== "Java"
+    ```java
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create()
+                .put("token", "binary:uuid")    // java.util.UUID
+                .put("ref", "binary:ulid")      // String, 26 lower-case characters
+                .build();
+    }
+
+    // a where clause on a binary column takes the bytes
+    Optional<Device> found = devices.query().where("token", BinaryIds.uuidBytes(uuid)).first();
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create()
+            .put("token", "binary:uuid")    // java.util.UUID
+            .put("ref", "binary:ulid")      // String, 26 lower-case characters
+            .build()
+    }
+
+    // a where clause on a binary column takes the bytes
+    val found = devices.query().where("token", BinaryIds.uuidBytes(uuid)).first()
+    ```
+
+Keep these limits in mind:
+
+- `binary:uuid` reads and writes a `java.util.UUID`, and a write takes a `UUID` only.
+- `binary:ulid` reads a lower-case 26-character `String` and writes a strict 26-character ULID in
+  any case: digits 0-9 and letters A-Z without I, L, O and U, the first character 0 to 7. Any other
+  text fails as `InvalidCastException`.
+- Any other value type fails as `InvalidCastException`.
+- A `where` clause on such a column compares bytes. Pass `BinaryIds.uuidBytes(uuid)` or
+  `BinaryIds.ulidBytes(text)`; a `UUID` or text does not match.
+- `toMap()` and `toJson()` give the text form.
+- A null value stays SQL NULL.
+- A stored value that is not exactly 16 bytes fails as `InvalidCastException`.
+- The key of a model with a binary key is not generated as bytes. This is not supported.
 
 Date formats are Java `DateTimeFormatter` patterns. Write `yyyy-MM-dd`, not PHP's `Y-m-d`: the PHP
 form compiles in Java and means something else.
@@ -706,6 +751,7 @@ page. `simplePaginate` and `cursorPaginate` work as on the query builder.
   clause, and an encrypter failure surfaces as `InvalidCastException`.
 - Diwan does no hashing. A hashed column must be text, a `hashed` cast takes a `String` only,
   and a hasher failure surfaces as `InvalidCastException`.
+- A `binary:uuid` or `binary:ulid` column must be `binary()`, a `where` clause on it takes the bytes from `BinaryIds`, and a stored value that is not 16 bytes surfaces as `InvalidCastException`.
 - Listeners and scopes belong to the class registered with `ModelQuery.of`; a subclass registered
   separately has its own list.
 
@@ -732,6 +778,7 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `Casts.instant` | `Casts` | A cast that stores an `Instant` whatever the model's timestamp format, for `Blueprint.instant` columns. Timestamp columns also need `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
 | `Casts.encrypted` | `Casts` | The `encrypted` cast: `encrypted()` stores a string as the encrypter's text, `encrypted(Cast)` wraps another cast (`Casts.json()`, `Casts.jsonUnicode()`, `Casts.collection()`, `Casts.object()`). The model needs an `attributeEncrypter()`. | `.put("secret", Casts.encrypted())` |
 | `Casts.hashed` | `Casts` | The `hashed` cast: stores a `String` as the hasher's hash and takes a `String` only. The model needs an `attributeHasher()`. | `.put("password", Casts.hashed())` |
+| `Casts.binaryUuid` `Casts.binaryUlid` `BinaryIds` | `Casts` | The `binary:uuid` and `binary:ulid` casts: store a `UUID` or a ULID `String` as 16 bytes in a `binary()` column. `BinaryIds.uuidBytes` and `BinaryIds.ulidBytes` give the bytes for a `where` clause. | `.put("token", Casts.binaryUuid())` |
 | `attributeEncrypter` `getAttributeEncrypter` | `Model` | The encrypter the model's `encrypted` casts use: override `attributeEncrypter()` to return your `AttributeEncrypter`, and `getAttributeEncrypter()` reads it. None by default. | `post.getAttributeEncrypter()` |
 | `attributeHasher` `getAttributeHasher` | `Model` | The hasher the model's `hashed` casts use: override `attributeHasher()` to return your `AttributeHasher`, and `getAttributeHasher()` reads it. None by default. | `user.getAttributeHasher()` |
 | `Casts.decimal` | `Casts` | `decimal(scale)` is the rounding `decimal:N` cast. `decimal(precision, scale[, mode])` is the strict cast: precision and scale as in `Blueprint.decimal`, extra decimals refused unless a rounding mode is given. | `.put("total", Casts.decimal(6, 2))` |

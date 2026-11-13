@@ -127,6 +127,7 @@
                 .put("secret", "encrypted")                     // String, encrypted
                 .put("payload", "encrypted:json")               // Map or List, encrypted
                 .put("password", "hashed")                      // String, hashed
+                .put("token", "binary:uuid")                    // UUID, 16 bytes
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -271,6 +272,47 @@
 - تعيد `toMap()` و`toJson()` التجزئة. أضف الـ attributes المجزَّأة إلى `hidden()`.
 - استعمل عمودًا نصيًّا واسعًا بما يكفي للتجزئة.
 - لا تجزّئ إلا `setAttribute` و`fill`. الكتابة المباشرة للـ attributes وعمليات الإدراج أو التحديث عبر الـ query builder تخزّن ما تمرّره كما هو.
+
+يخزّن cast من نوع `binary` قيمة UUID أو ULID على هيئة 16 بايت. صيغتا الـ cast هما `binary:uuid` و
+`binary:ulid`؛ و`Casts.binaryUuid()` و`Casts.binaryUlid()` هما الصيغتان المنمَّطتان. استعمل عمود
+`binary()` لا `uuid()`:
+
+=== "Java"
+    ```java
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create()
+                .put("token", "binary:uuid")    // java.util.UUID
+                .put("ref", "binary:ulid")      // String, 26 lower-case characters
+                .build();
+    }
+
+    // a where clause on a binary column takes the bytes
+    Optional<Device> found = devices.query().where("token", BinaryIds.uuidBytes(uuid)).first();
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create()
+            .put("token", "binary:uuid")    // java.util.UUID
+            .put("ref", "binary:ulid")      // String, 26 lower-case characters
+            .build()
+    }
+
+    // a where clause on a binary column takes the bytes
+    val found = devices.query().where("token", BinaryIds.uuidBytes(uuid)).first()
+    ```
+
+تذكّر هذه الحدود:
+
+- يقرأ `binary:uuid` ويكتب `java.util.UUID`، والكتابة تقبل `UUID` فقط.
+- يقرأ `binary:ulid` قيمة `String` من 26 حرفًا صغيرًا، ويكتب ULID صارمًا من 26 حرفًا بأي حالة أحرف: الأرقام 0-9 والأحرف A-Z من دون I وL وO وU، وأول حرف بين 0 و7. أي نص آخر يصلك على هيئة `InvalidCastException`.
+- أي نوع قيمة آخر يصلك على هيئة `InvalidCastException`.
+- جملة `where` على عمود كهذا تقارن البايتات. مرّر `BinaryIds.uuidBytes(uuid)` أو `BinaryIds.ulidBytes(text)`؛ فلا يطابق `UUID` أو النص.
+- تعيد `toMap()` و`toJson()` الصيغة النصية.
+- القيمة null تبقى SQL NULL.
+- القيمة المخزَّنة التي ليست 16 بايت بالضبط تصلك على هيئة `InvalidCastException`.
+- مفتاح النموذج ذي المفتاح الثنائي لا يُولَّد بايتات. هذا غير مدعوم.
 
 صيغ التواريخ هي أنماط `DateTimeFormatter` في Java. اكتب `yyyy-MM-dd` لا `Y-m-d` الخاصة بـ PHP: تُترجَم صيغة PHP في Java
 لكنها تعني شيئًا آخر.
@@ -646,6 +688,7 @@
 - من دون cast من نوع `bool`، قيمة `Boolean` تُضبط على عمود SQLite تُقرأ `1` وتبقى dirty مقابل `true`.
 - لا تقوم Diwan بأي تشفير. العمود المشفَّر يجب أن يكون نصيًّا، ولا يُستعمل في جملة `where`، وفشل الـ encrypter يظهر على هيئة `InvalidCastException`.
 - لا تقوم Diwan بأي تجزئة. العمود المجزَّأ يجب أن يكون نصيًّا، وcast من نوع `hashed` يقبل `String` فقط، وفشل الـ hasher يظهر على هيئة `InvalidCastException`.
+- عمود `binary:uuid` أو `binary:ulid` يجب أن يكون `binary()`، وجملة `where` عليه تأخذ البايتات من `BinaryIds`، والقيمة المخزَّنة التي ليست 16 بايت تظهر على هيئة `InvalidCastException`.
 - تنتمي الـ listeners والـ scopes إلى الصنف المسجَّل عبر `ModelQuery.of`؛ والصنف الفرعي المسجَّل منفصلًا له قائمته الخاصة.
 
 انظر [العلاقات](relations.md) و[الفروق عن Laravel](differences.md) و[الأخطاء](errors.md).
@@ -670,6 +713,7 @@
 | `Casts.instant` | `Casts` | cast يخزّن `Instant` مهما كانت صيغة طوابع النموذج، لأعمدة `Blueprint.instant`. وأعمدة الطوابع تحتاج أيضًا `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
 | `Casts.encrypted` | `Casts` | الـ cast من نوع `encrypted`: الدالة `encrypted()` تخزّن نصًّا بصيغة ما ينتجه الـ encrypter، و`encrypted(Cast)` تغلّف cast آخر (`Casts.json()` أو `Casts.jsonUnicode()` أو `Casts.collection()` أو `Casts.object()`). يحتاج النموذج إلى `attributeEncrypter()`. | `.put("secret", Casts.encrypted())` |
 | `Casts.hashed` | `Casts` | الـ cast من نوع `hashed`: يخزّن `String` بصيغة تجزئة الـ hasher ويقبل `String` فقط. يحتاج النموذج إلى `attributeHasher()`. | `.put("password", Casts.hashed())` |
+| `Casts.binaryUuid` `Casts.binaryUlid` `BinaryIds` | `Casts` | الـ casts من نوع `binary:uuid` و`binary:ulid`: تخزّن `UUID` أو `String` لـ ULID على هيئة 16 بايت في عمود `binary()`. تعطي `BinaryIds.uuidBytes` و`BinaryIds.ulidBytes` البايتات لجملة `where`. | `.put("token", Casts.binaryUuid())` |
 | `attributeEncrypter` `getAttributeEncrypter` | `Model` | الـ encrypter الذي تستعمله casts النموذج من نوع `encrypted`: تجاوز `attributeEncrypter()` لتعيد `AttributeEncrypter` الخاص بك، و`getAttributeEncrypter()` تقرأه. لا يوجد افتراضيًا. | `post.getAttributeEncrypter()` |
 | `attributeHasher` `getAttributeHasher` | `Model` | الـ hasher الذي تستعمله casts النموذج من نوع `hashed`: تجاوز `attributeHasher()` لتعيد `AttributeHasher` الخاص بك، و`getAttributeHasher()` تقرأه. لا يوجد افتراضيًا. | `user.getAttributeHasher()` |
 | `Casts.decimal` | `Casts` | الدالة `decimal(scale)` هي الـ cast المقرِّب `decimal:N`. أما `decimal(precision, scale[, mode])` فهي الـ cast الصارم: precision وscale كما في `Blueprint.decimal`، والخانات العشرية الزائدة مرفوضة ما لم يُعطَ وضع تقريب. | `.put("total", Casts.decimal(6, 2))` |
