@@ -8,18 +8,18 @@
 
 === "Gradle (Kotlin)"
     ```kotlin
-    implementation("org.aristonis:diwan-database-eloquent:0.4.0")
+    implementation("org.aristonis:diwan-database-eloquent:0.5.0")
     ```
 === "Gradle (Groovy)"
     ```groovy
-    implementation 'org.aristonis:diwan-database-eloquent:0.4.0'
+    implementation 'org.aristonis:diwan-database-eloquent:0.5.0'
     ```
 === "Maven"
     ```xml
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-eloquent</artifactId>
-        <version>0.4.0</version>
+        <version>0.5.0</version>
     </dependency>
     ```
 

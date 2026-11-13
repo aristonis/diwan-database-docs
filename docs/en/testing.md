@@ -10,7 +10,7 @@ Add it to the test scope only.
 
     ```kotlin
     dependencies {
-        testImplementation("org.aristonis:diwan-database-testing:0.4.0")
+        testImplementation("org.aristonis:diwan-database-testing:0.5.0")
     }
     ```
 
@@ -18,7 +18,7 @@ Add it to the test scope only.
 
     ```groovy
     dependencies {
-        testImplementation 'org.aristonis:diwan-database-testing:0.4.0'
+        testImplementation 'org.aristonis:diwan-database-testing:0.5.0'
     }
     ```
 
@@ -28,7 +28,7 @@ Add it to the test scope only.
     <dependency>
       <groupId>org.aristonis</groupId>
       <artifactId>diwan-database-testing</artifactId>
-      <version>0.4.0</version>
+      <version>0.5.0</version>
       <scope>test</scope>
     </dependency>
     ```
