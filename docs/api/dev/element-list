@@ -6,6 +6,7 @@ org.aristonis.diwan.database.driver.sqlite
 org.aristonis.diwan.database.eloquent
 org.aristonis.diwan.database.eloquent.casts
 org.aristonis.diwan.database.eloquent.exception
+org.aristonis.diwan.database.eloquent.factory
 org.aristonis.diwan.database.eloquent.json
 org.aristonis.diwan.database.eloquent.page
 org.aristonis.diwan.database.eloquent.relations
