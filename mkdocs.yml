@@ -46,6 +46,8 @@ nav:
       - Schema builder: schema.md
       - Migrations: migrations.md
       - Models: models.md
+      - Factories: factories.md
+      - Factory relations: factory-relations.md
       - Relations: relations.md
       - Testing: testing.md
       - Android: android.md

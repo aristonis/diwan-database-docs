@@ -8,18 +8,18 @@
 
 === "Gradle (Kotlin)"
     ```kotlin
-    implementation("org.aristonis:diwan-database-eloquent:0.4.0")
+    implementation("org.aristonis:diwan-database-eloquent:0.5.0")
     ```
 === "Gradle (Groovy)"
     ```groovy
-    implementation 'org.aristonis:diwan-database-eloquent:0.4.0'
+    implementation 'org.aristonis:diwan-database-eloquent:0.5.0'
     ```
 === "Maven"
     ```xml
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-eloquent</artifactId>
-        <version>0.4.0</version>
+        <version>0.5.0</version>
     </dependency>
     ```
 
@@ -72,6 +72,8 @@
 | `uniqueIdKind()` | `UniqueIdKind.NONE`؛ و`UUID` (الإصدار 7) أو `ULID` يولّد المفتاح عند الإدراج |
 | `perPage()` | حجم الصفحة في `paginate()` بلا وسيط |
 | `softDeletes()` و`deletedAtColumn()` | معطّل، `deleted_at` |
+| `attributeEncrypter()` | لا encrypter (فيفشل cast من نوع `encrypted` على قيمة غير null) |
+| `attributeHasher()` | لا hasher (فيفشل cast من نوع `hashed` على قيمة غير null) |
 
 يأتي الجمع من مجموعة قصيرة من القواعد الإنجليزية. تجاوز `table()` حين يخطئ التخمين.
 
@@ -120,6 +122,12 @@
                 .put("price", "decimal:2")                      // BigDecimal, scale 2
                 .put("is_admin", "bool")                        // Boolean
                 .put("options", "json")                         // Map or List
+                .put("tags", "collection")                      // List
+                .put("settings", "object")                      // Map
+                .put("secret", "encrypted")                     // String, encrypted
+                .put("payload", "encrypted:json")               // Map or List, encrypted
+                .put("password", "hashed")                      // String, hashed
+                .put("token", "binary:uuid")                    // UUID, 16 bytes
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -133,6 +141,8 @@
             .put("price", "decimal:2")                      // BigDecimal, scale 2
             .put("is_admin", "bool")                        // Boolean
             .put("options", "json")                         // Map or List
+            .put("tags", "collection")                      // List
+            .put("settings", "object")                      // Map
             .put("born_on", "date")                         // LocalDate
             .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
             .put("status", Casts.enumOf(Status::class.java))      // the enum constant
@@ -156,6 +166,153 @@
 البيانات المخزَّنة التالفة، مثل JSON مكسور أو `"abc"` تحت `int`، ترمي `InvalidCastException`. أمّا Laravel فتقرأ `null` أو `0` هنا.
 يقارن فحص التغيّر (dirty check) بالمعنى: JSON بالبنية، واللحظات كـ instants، والتواريخ كتواريخ. قراءة قيمة cast (تحويل نوع قيمة الـ attribute عند القراءة والكتابة) لا تجعل النموذج dirty أبدًا،
 لكن تعديل map أعادها cast من نوع `json` يفعل ذلك. ولكتابة cast خاص بك نفّذ `Cast<T>` (الدالتان `get` و`set`).
+
+يقرأ cast من نوع `collection` مصفوفة JSON على أنها `List`، ويقرأ cast من نوع `object` كائن JSON على أنه `Map` يحتفظ بترتيب المفاتيح المخزَّن.
+القيمة المخزَّنة من الشكل الآخر ترمي `InvalidCastException`، وكذلك كتابة قيمة من نوع خاطئ، ولا تحتوي أي من الرسالتين على القيمة.
+العمود null والنص الفارغ والنص JSON `null` تُقرأ كلها `null`، وكتابة `null` تخزّن SQL NULL.
+يمكن تعديل النتيجتين في مكانهما كما في نتيجة `json`، وتُرمَّز الكتابة كما يفعل `json`.
+للعناصر المنمَّطة أو map منمَّط أو DTO، نفّذ `Cast<T>` بنفسك كما ورد أعلاه.
+
+يخزّن cast من نوع `encrypted` قيمته نصًّا ينتجه encrypter (المشفِّر). صيغ الـ cast هي
+`encrypted` (قيمة `String`) و`encrypted:array` و`encrypted:json` (قيمة `Map` أو `List`)
+و`encrypted:collection` (قيمة `List`) و`encrypted:object` (قيمة `Map`)؛ و`Casts.encrypted()` و
+`Casts.encrypted(Cast)` هما الصيغتان المنمَّطتان. لا تقوم Diwan بأي تشفير. أنت تقدّم
+`AttributeEncrypter` بتجاوز `attributeEncrypter()` في النموذج، وهو يحمل شيفرة التشفير ومفاتيحك أنت:
+
+=== "Java"
+    ```java
+    public final class MyEncrypter implements AttributeEncrypter {
+        @Override
+        public String encrypt(String plain) { return yourOwnCipher.seal(plain); }
+
+        @Override
+        public String decrypt(String cipher) { return yourOwnCipher.open(cipher); }
+    }
+
+    // in the model
+    private static final AttributeEncrypter ENCRYPTER = new MyEncrypter();
+
+    @Override
+    protected AttributeEncrypter attributeEncrypter() { return ENCRYPTER; }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class MyEncrypter : AttributeEncrypter {
+        override fun encrypt(plain: String): String = yourOwnCipher.seal(plain)
+
+        override fun decrypt(cipher: String): String = yourOwnCipher.open(cipher)
+    }
+
+    private val ENCRYPTER = MyEncrypter()  // one shared instance
+
+    // in the model
+    override fun attributeEncrypter(): AttributeEncrypter = ENCRYPTER
+    ```
+
+تذكّر هذه الحدود:
+
+- يجب أن يكون العمود من نوع نصي، لا `jsonb`.
+- لا يمكن استعمال عمود مشفَّر في جملة `where`، لأن قاعدة البيانات لا تحتفظ إلا بمخرجات الـ encrypter.
+- القيمة null تخزّن SQL NULL وتُقرأ `null` دون استدعاء الـ encrypter.
+- الاستثناء الصادر من `encrypt` أو `decrypt`، أو قيمة غير null بلا encrypter، يصلك على هيئة `InvalidCastException` سببها (cause) هو الاستثناء الأصلي.
+- إن أعادت `hasPreviousKeys()` القيمة `true`، فإن الـ attribute المشفَّر الذي تغيّر نصّه المخزَّن يكون dirty حتى لو بقيت القيمة بعد فك التشفير نفسها، فيعيد الحفظ التالي تشفيره بالمفتاح الحالي. وقيمة JSON المشفَّرة التي قرأتها فقط تصبح dirty أيضًا.
+- تعيد `toMap()` و`toJson()` القيمة بعد فك التشفير. أضف الـ attributes المشفَّرة إلى `hidden()` ما لم تقصد إظهارها.
+- لا يشفّر إلا `setAttribute` و`fill`. الكتابة المباشرة للـ attributes وعمليات الإدراج أو التحديث عبر الـ query builder تخزّن ما تمرّره كما هو.
+- تستدعي Diwan الدالة `attributeEncrypter()` في كل قراءة وكتابة وفحص dirty، فأعد نسخة واحدة مشتركة آمنة مع الخيوط. استخدم تشفيرًا موثَّقًا (authenticated) مع nonce جديد لكل قيمة، وحمّل المفاتيح من البيئة أو من مخزن مفاتيح، ولا تضع النص الصريح أو المفاتيح في رسائل الاستثناءات.
+
+يخزّن cast من نوع `hashed` تجزئة أحادية الاتجاه لقيمة `String` في عمود نصي. صيغة الـ cast هي
+`hashed`؛ و`Casts.hashed()` هي الصيغة المنمَّطة. لا تقوم Diwan بأي تجزئة. أنت تقدّم
+`AttributeHasher` بتجاوز `attributeHasher()` في النموذج، وهو يغلّف مكتبة التجزئة الخاصة بك. استعمل
+تجزئة كلمات مرور سليمة، bcrypt أو argon2، وأعد نسخة واحدة مشتركة آمنة مع الخيوط:
+
+=== "Java"
+    ```java
+    public final class MyHasher implements AttributeHasher {
+        @Override
+        public String hash(String plain) { return yourOwnHash.make(plain); }
+
+        @Override
+        public boolean isHashed(String value) { return yourOwnHash.isHash(value); }
+
+        @Override
+        public boolean isCurrent(String hashed) { return yourOwnHash.isUpToDate(hashed); }  // override to refuse hashes below your minimum cost
+    }
+
+    // in the model
+    private static final AttributeHasher HASHER = new MyHasher();
+
+    @Override
+    protected AttributeHasher attributeHasher() { return HASHER; }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class MyHasher : AttributeHasher {
+        override fun hash(plain: String): String = yourOwnHash.make(plain)
+
+        override fun isHashed(value: String): Boolean = yourOwnHash.isHash(value)
+
+        override fun isCurrent(hashed: String): Boolean = yourOwnHash.isUpToDate(hashed)  // override to refuse hashes below your minimum cost
+    }
+
+    private val HASHER = MyHasher()  // one shared instance
+
+    // in the model
+    override fun attributeHasher(): AttributeHasher = HASHER
+    ```
+
+تذكّر هذه الحدود:
+
+- الـ cast للكتابة فقط. القراءة تعيد التجزئة المخزَّنة، والتحقق من كلمة المرور مهمة الـ hasher الخاص بك.
+- يقبل الـ cast قيمة `String` فقط. أي قيمة أخرى تصلك على هيئة `InvalidCastException`.
+- القيمة التي يقبلها `isHashed` هي تجزئة أصلًا. تبقى كما هي إن أعادت `isCurrent` القيمة `true`، وتُرفض في غير ذلك. لذا فالطلب الذي يرسل قيمة على شكل تجزئة يتخطّى الـ hasher وقواعد كلمة المرور لديك. تحقّق من المدخلات غير الموثوقة كنص صريح أولًا، أو أبقِ الـ attribute خارج `fillable()` واضبطه بنفسك. اجعل `isHashed` تطابق الصيغة والطول كاملين، وتجاوز `isCurrent` لترفض التجزئات الأضعف من الحد الأدنى للكلفة لديك.
+- التحقق والمقارنة ثابتة الزمن وحدود المدخلات (يقرأ bcrypt أول 72 بايت فقط) من مهام مكتبة التجزئة لديك. حدّد طول المدخلات قبل ضبطها.
+- القيمة null تبقى SQL NULL ولا يُستدعى الـ hasher.
+- الاستثناء الصادر من الـ hasher، أو قيمة غير null بلا hasher، يصلك على هيئة `InvalidCastException` سببها (cause) هو الاستثناء الأصلي.
+- ضبط القيمة الصريحة نفسها مرة أخرى يجعل الـ attribute dirty حين يختلف ناتج الـ hasher، كما في التجزئة ذات الـ salt.
+- تعيد `toMap()` و`toJson()` التجزئة. أضف الـ attributes المجزَّأة إلى `hidden()`.
+- استعمل عمودًا نصيًّا واسعًا بما يكفي للتجزئة.
+- لا تجزّئ إلا `setAttribute` و`fill`. الكتابة المباشرة للـ attributes وعمليات الإدراج أو التحديث عبر الـ query builder تخزّن ما تمرّره كما هو.
+
+يخزّن cast من نوع `binary` قيمة UUID أو ULID على هيئة 16 بايت. صيغتا الـ cast هما `binary:uuid` و
+`binary:ulid`؛ و`Casts.binaryUuid()` و`Casts.binaryUlid()` هما الصيغتان المنمَّطتان. استعمل عمود
+`binary()` لا `uuid()`:
+
+=== "Java"
+    ```java
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create()
+                .put("token", "binary:uuid")    // java.util.UUID
+                .put("ref", "binary:ulid")      // String, 26 lower-case characters
+                .build();
+    }
+
+    // a where clause on a binary column takes the bytes
+    Optional<Device> found = devices.query().where("token", BinaryIds.uuidBytes(uuid)).first();
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create()
+            .put("token", "binary:uuid")    // java.util.UUID
+            .put("ref", "binary:ulid")      // String, 26 lower-case characters
+            .build()
+    }
+
+    // a where clause on a binary column takes the bytes
+    val found = devices.query().where("token", BinaryIds.uuidBytes(uuid)).first()
+    ```
+
+تذكّر هذه الحدود:
+
+- يقرأ `binary:uuid` ويكتب `java.util.UUID`، والكتابة تقبل `UUID` فقط.
+- يقرأ `binary:ulid` قيمة `String` من 26 حرفًا صغيرًا، ويكتب ULID صارمًا من 26 حرفًا بأي حالة أحرف: الأرقام 0-9 والأحرف A-Z من دون I وL وO وU، وأول حرف بين 0 و7. أي نص آخر يصلك على هيئة `InvalidCastException`.
+- أي نوع قيمة آخر يصلك على هيئة `InvalidCastException`.
+- جملة `where` على عمود كهذا تقارن البايتات. مرّر `BinaryIds.uuidBytes(uuid)` أو `BinaryIds.ulidBytes(text)`؛ فلا يطابق `UUID` أو النص.
+- تعيد `toMap()` و`toJson()` الصيغة النصية.
+- القيمة null تبقى SQL NULL.
+- القيمة المخزَّنة التي ليست 16 بايت بالضبط تصلك على هيئة `InvalidCastException`.
+- مفتاح النموذج ذي المفتاح الثنائي لا يُولَّد بايتات. هذا غير مدعوم.
 
 صيغ التواريخ هي أنماط `DateTimeFormatter` في Java. اكتب `yyyy-MM-dd` لا `Y-m-d` الخاصة بـ PHP: تُترجَم صيغة PHP في Java
 لكنها تعني شيئًا آخر.
@@ -348,6 +505,8 @@
 
 الملء هنا يتجاوز حماية `fillable`، فلا تمرّر بيانات الطلب إلى هذه الدوال دون فحص. تُطبَّق الـ casts، وتُضبط المعرّفات الفريدة والـ timestamps، وتبقى قيمة `created_at` أو `updated_at` الموجودة في الصف كما هي. تعمل `beforeWrite()` على كل صف، لكن لا يُطلق أي حدث نموذج. وصيغ القوائم تكتب كل الصفوف بعبارة واحدة، فيجب أن تحمل الصفوف كلها الأعمدة نفسها، وأن تبقى الدفعة الكبيرة تحت حد الربط (999 على SQLite قبل 3.32).
 
+لبناء نماذج للاختبارات وتعبئة البيانات راجع [المصانع](factories.md): يبني `Factory` النماذج أو ينشئها أو يدرجها من تعريف تكتبه أنت.
+
 ## اختصارات الاستعلام
 
 تصفّي `whereBelongsTo` أبناء أب عبر علاقة `belongsTo` التي يعلنها الابن. من دون اسم تستعمل اسم صنف الأب بصيغة camel case، فيكون `user` للصنف `User`. مع R8 أو أي إعادة تسمية أخرى، مرّر اسم العلاقة:
@@ -529,6 +688,9 @@
 
 - النماذج ليست آمنة للاستعمال من عدة threads. شارك `ModelQuery`، وأعطِ كل thread نسخه الخاصة.
 - من دون cast من نوع `bool`، قيمة `Boolean` تُضبط على عمود SQLite تُقرأ `1` وتبقى dirty مقابل `true`.
+- لا تقوم Diwan بأي تشفير. العمود المشفَّر يجب أن يكون نصيًّا، ولا يُستعمل في جملة `where`، وفشل الـ encrypter يظهر على هيئة `InvalidCastException`.
+- لا تقوم Diwan بأي تجزئة. العمود المجزَّأ يجب أن يكون نصيًّا، وcast من نوع `hashed` يقبل `String` فقط، وفشل الـ hasher يظهر على هيئة `InvalidCastException`.
+- عمود `binary:uuid` أو `binary:ulid` يجب أن يكون `binary()`، وجملة `where` عليه تأخذ البايتات من `BinaryIds`، والقيمة المخزَّنة التي ليست 16 بايت تظهر على هيئة `InvalidCastException`.
 - تنتمي الـ listeners والـ scopes إلى الصنف المسجَّل عبر `ModelQuery.of`؛ والصنف الفرعي المسجَّل منفصلًا له قائمته الخاصة.
 
 انظر [العلاقات](relations.md) و[الفروق عن Laravel](differences.md) و[الأخطاء](errors.md).
@@ -551,6 +713,11 @@
 | `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | إعدادات النموذج كما يحسمها: الجدول، واسم المفتاح الأساسي ونوعه، وهل تولّد قاعدة البيانات المفتاح، والمفتاح مسبوقًا باسم الجدول (`users.id`)، وعمود مسبوق باسم الجدول، واسم المفتاح الأجنبي الذي تستخدمه الجداول الأخرى لهذا النموذج، وحجم الصفحة الافتراضي، ونوع المعرّف الفريد. | `post.getQualifiedKeyName()` |
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | الوصول للاتصال: اتصال النموذج واسمه، وربط النموذج بـ query factory (`setConnection`)، والـ factory الذي يستخدمه، وbuilder أساسي جديد على جدول النموذج. | `post.newBaseQuery().where("id", 1)` |
 | `Casts.instant` | `Casts` | cast يخزّن `Instant` مهما كانت صيغة طوابع النموذج، لأعمدة `Blueprint.instant`. وأعمدة الطوابع تحتاج أيضًا `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
+| `Casts.encrypted` | `Casts` | الـ cast من نوع `encrypted`: الدالة `encrypted()` تخزّن نصًّا بصيغة ما ينتجه الـ encrypter، و`encrypted(Cast)` تغلّف cast آخر (`Casts.json()` أو `Casts.jsonUnicode()` أو `Casts.collection()` أو `Casts.object()`). يحتاج النموذج إلى `attributeEncrypter()`. | `.put("secret", Casts.encrypted())` |
+| `Casts.hashed` | `Casts` | الـ cast من نوع `hashed`: يخزّن `String` بصيغة تجزئة الـ hasher ويقبل `String` فقط. يحتاج النموذج إلى `attributeHasher()`. | `.put("password", Casts.hashed())` |
+| `Casts.binaryUuid` `Casts.binaryUlid` `BinaryIds` | `Casts` | الـ casts من نوع `binary:uuid` و`binary:ulid`: تخزّن `UUID` أو `String` لـ ULID على هيئة 16 بايت في عمود `binary()`. تعطي `BinaryIds.uuidBytes` و`BinaryIds.ulidBytes` البايتات لجملة `where`. | `.put("token", Casts.binaryUuid())` |
+| `attributeEncrypter` `getAttributeEncrypter` | `Model` | الـ encrypter الذي تستعمله casts النموذج من نوع `encrypted`: تجاوز `attributeEncrypter()` لتعيد `AttributeEncrypter` الخاص بك، و`getAttributeEncrypter()` تقرأه. لا يوجد افتراضيًا. | `post.getAttributeEncrypter()` |
+| `attributeHasher` `getAttributeHasher` | `Model` | الـ hasher الذي تستعمله casts النموذج من نوع `hashed`: تجاوز `attributeHasher()` لتعيد `AttributeHasher` الخاص بك، و`getAttributeHasher()` تقرأه. لا يوجد افتراضيًا. | `user.getAttributeHasher()` |
 | `Casts.decimal` | `Casts` | الدالة `decimal(scale)` هي الـ cast المقرِّب `decimal:N`. أما `decimal(precision, scale[, mode])` فهي الـ cast الصارم: precision وscale كما في `Blueprint.decimal`، والخانات العشرية الزائدة مرفوضة ما لم يُعطَ وضع تقريب. | `.put("total", Casts.decimal(6, 2))` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | إعدادات الوقت وJSON: الـ codec خلف casts الـ JSON وصيغة JSON، ونمط الطوابع النصية، وطريقة كتابة الطوابع، والساعة التي يقرأ منها النموذج الطوابع. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | أعمدة الطوابع: أسماء أعمدة created-at وupdated-at وdeleted-at (الأخير أيضًا مسبوقًا بالجدول)، وهل يكتب النموذج الطوابع الآن. | `post.usesTimestamps()` |

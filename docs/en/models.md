@@ -8,18 +8,18 @@ Models live in `diwan-database-eloquent`:
 
 === "Gradle (Kotlin)"
     ```kotlin
-    implementation("org.aristonis:diwan-database-eloquent:0.4.0")
+    implementation("org.aristonis:diwan-database-eloquent:0.5.0")
     ```
 === "Gradle (Groovy)"
     ```groovy
-    implementation 'org.aristonis:diwan-database-eloquent:0.4.0'
+    implementation 'org.aristonis:diwan-database-eloquent:0.5.0'
     ```
 === "Maven"
     ```xml
     <dependency>
         <groupId>org.aristonis</groupId>
         <artifactId>diwan-database-eloquent</artifactId>
-        <version>0.4.0</version>
+        <version>0.5.0</version>
     </dependency>
     ```
 
@@ -72,6 +72,8 @@ Override these methods to change the defaults:
 | `uniqueIdKind()` | `UniqueIdKind.NONE`; `UUID` (version 7) or `ULID` generates the key on insert |
 | `perPage()` | the page size for `paginate()` with no argument |
 | `softDeletes()`, `deletedAtColumn()` | off, `deleted_at` |
+| `attributeEncrypter()` | no encrypter (an `encrypted` cast on a non-null value then fails) |
+| `attributeHasher()` | no hasher (a `hashed` cast on a non-null value then fails) |
 
 The plural comes from a short English rule set. Override `table()` when it guesses wrong.
 
@@ -121,6 +123,12 @@ Declare casts in `casts()` with Laravel's string form or the typed factories in 
                 .put("price", "decimal:2")                      // BigDecimal, scale 2
                 .put("is_admin", "bool")                        // Boolean
                 .put("options", "json")                         // Map or List
+                .put("tags", "collection")                      // List
+                .put("settings", "object")                      // Map
+                .put("secret", "encrypted")                     // String, encrypted
+                .put("payload", "encrypted:json")               // Map or List, encrypted
+                .put("password", "hashed")                      // String, hashed
+                .put("token", "binary:uuid")                    // UUID, 16 bytes
                 .put("born_on", "date")                         // LocalDate
                 .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
                 .put("status", Casts.enumOf(Status.class))      // the enum constant
@@ -134,6 +142,8 @@ Declare casts in `casts()` with Laravel's string form or the typed factories in 
             .put("price", "decimal:2")                      // BigDecimal, scale 2
             .put("is_admin", "bool")                        // Boolean
             .put("options", "json")                         // Map or List
+            .put("tags", "collection")                      // List
+            .put("settings", "object")                      // Map
             .put("born_on", "date")                         // LocalDate
             .put("paid_at", Casts.datetime("dd/MM/yyyy"))   // Instant
             .put("status", Casts.enumOf(Status::class.java))      // the enum constant
@@ -158,6 +168,175 @@ Bad stored data, such as broken JSON or `"abc"` under `int`, throws `InvalidCast
 Laravel reads `null` or `0` there. The dirty check compares by meaning: JSON by structure, moments
 as instants, dates as dates. Reading a cast value never makes a model dirty, but changing a map a
 `json` cast returned does. For a cast of your own, implement `Cast<T>` (`get` and `set`).
+
+The `collection` cast reads a JSON array as a `List` and the `object` cast reads a JSON object as a
+`Map` that keeps the stored key order. A stored value of the other shape throws
+`InvalidCastException`, and so does writing a value of the wrong type; neither message holds the
+value. A null column, an empty string and the JSON text `null` read as `null`, and writing `null`
+stores SQL NULL. Both results can be changed in place like a `json` result, and writes encode as
+`json` does. For typed elements, a typed map or a DTO, implement `Cast<T>` yourself, as described above.
+
+An `encrypted` cast stores its value as text that an encrypter produces. The cast strings are
+`encrypted` (a `String`), `encrypted:array` and `encrypted:json` (a `Map` or `List`),
+`encrypted:collection` (a `List`) and `encrypted:object` (a `Map`); `Casts.encrypted()` and
+`Casts.encrypted(Cast)` are the typed forms. Diwan does no cryptography. You supply an
+`AttributeEncrypter` by overriding `attributeEncrypter()` on the model, and it holds your own cipher
+and keys:
+
+=== "Java"
+    ```java
+    public final class MyEncrypter implements AttributeEncrypter {
+        @Override
+        public String encrypt(String plain) { return yourOwnCipher.seal(plain); }
+
+        @Override
+        public String decrypt(String cipher) { return yourOwnCipher.open(cipher); }
+    }
+
+    // in the model
+    private static final AttributeEncrypter ENCRYPTER = new MyEncrypter();
+
+    @Override
+    protected AttributeEncrypter attributeEncrypter() { return ENCRYPTER; }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class MyEncrypter : AttributeEncrypter {
+        override fun encrypt(plain: String): String = yourOwnCipher.seal(plain)
+
+        override fun decrypt(cipher: String): String = yourOwnCipher.open(cipher)
+    }
+
+    private val ENCRYPTER = MyEncrypter()  // one shared instance
+
+    // in the model
+    override fun attributeEncrypter(): AttributeEncrypter = ENCRYPTER
+    ```
+
+Keep these limits in mind:
+
+- The column must be a text type, not `jsonb`.
+- An encrypted column cannot be used in a `where` clause, because the database holds only the
+  encrypter's output.
+- A null value stores SQL NULL and reads as `null` without calling the encrypter.
+- An exception from `encrypt` or `decrypt`, or a non-null value with no encrypter, reaches you as an
+  `InvalidCastException` whose cause is the original exception.
+- If `hasPreviousKeys()` returns `true`, an encrypted attribute whose stored text changed is dirty
+  even when the decrypted value is the same, so the next save re-encrypts it under the current key.
+  An encrypted JSON value that you only read also turns dirty.
+- `toMap()` and `toJson()` return the decrypted value. List encrypted attributes in `hidden()`
+  unless you mean to expose them.
+- Only `setAttribute` and `fill` encrypt. Raw attribute writes and query builder inserts or
+  updates store what you pass.
+- Diwan calls `attributeEncrypter()` on every read, write and dirty check, so return one shared,
+  thread-safe instance. Use an authenticated cipher with a fresh nonce per value, load keys from
+  the environment or a key store, and keep plaintext and keys out of exception messages.
+
+A `hashed` cast stores a one-way hash of a `String` in a text column. The cast string is `hashed`;
+`Casts.hashed()` is the typed form. Diwan does no hashing. You supply an `AttributeHasher` by
+overriding `attributeHasher()` on the model, and it wraps your own hash library. Use a proper
+password hash, bcrypt or argon2, and return one shared, thread-safe instance:
+
+=== "Java"
+    ```java
+    public final class MyHasher implements AttributeHasher {
+        @Override
+        public String hash(String plain) { return yourOwnHash.make(plain); }
+
+        @Override
+        public boolean isHashed(String value) { return yourOwnHash.isHash(value); }
+
+        @Override
+        public boolean isCurrent(String hashed) { return yourOwnHash.isUpToDate(hashed); }  // override to refuse hashes below your minimum cost
+    }
+
+    // in the model
+    private static final AttributeHasher HASHER = new MyHasher();
+
+    @Override
+    protected AttributeHasher attributeHasher() { return HASHER; }
+    ```
+=== "Kotlin"
+    ```kotlin
+    class MyHasher : AttributeHasher {
+        override fun hash(plain: String): String = yourOwnHash.make(plain)
+
+        override fun isHashed(value: String): Boolean = yourOwnHash.isHash(value)
+
+        override fun isCurrent(hashed: String): Boolean = yourOwnHash.isUpToDate(hashed)  // override to refuse hashes below your minimum cost
+    }
+
+    private val HASHER = MyHasher()  // one shared instance
+
+    // in the model
+    override fun attributeHasher(): AttributeHasher = HASHER
+    ```
+
+Keep these limits in mind:
+
+- The cast is write-only. A read returns the stored hash, and verifying a password is your hasher's
+  job.
+- The cast takes a `String` only. Any other value reaches you as an `InvalidCastException`.
+- A value that `isHashed` accepts is already a hash. It is kept as given if `isCurrent` returns
+  `true` and refused otherwise. So a request that sends a hash-shaped value skips your hasher and
+  your password rules. Validate untrusted input as plain text first, or keep the attribute out of
+  `fillable()` and set it yourself. Make `isHashed` match the full format and length, and override
+  `isCurrent` to refuse hashes below your minimum cost.
+- Verifying, constant-time comparison and input limits (bcrypt reads only the first 72 bytes) are
+  your hash library's job. Cap the input length before you set it.
+- A null value stays SQL NULL and the hasher is not called.
+- An exception from the hasher, or a non-null value with no hasher, reaches you as an
+  `InvalidCastException` whose cause is the original exception.
+- Setting the same plain value again is dirty when your hasher's output differs, as a salted hash
+  does.
+- `toMap()` and `toJson()` return the hash. List hashed attributes in `hidden()`.
+- Use a text column wide enough for the hash.
+- Only `setAttribute` and `fill` hash. Raw attribute writes and query builder inserts or updates
+  store what you pass.
+
+A binary cast stores a UUID or a ULID as 16 bytes. The cast strings are `binary:uuid` and
+`binary:ulid`; `Casts.binaryUuid()` and `Casts.binaryUlid()` are the typed forms. Use a `binary()`
+column, not `uuid()`:
+
+=== "Java"
+    ```java
+    @Override
+    protected Map<String, Cast<?>> casts() {
+        return CastMap.create()
+                .put("token", "binary:uuid")    // java.util.UUID
+                .put("ref", "binary:ulid")      // String, 26 lower-case characters
+                .build();
+    }
+
+    // a where clause on a binary column takes the bytes
+    Optional<Device> found = devices.query().where("token", BinaryIds.uuidBytes(uuid)).first();
+    ```
+=== "Kotlin"
+    ```kotlin
+    override fun casts(): Map<String, Cast<*>> {
+        return CastMap.create()
+            .put("token", "binary:uuid")    // java.util.UUID
+            .put("ref", "binary:ulid")      // String, 26 lower-case characters
+            .build()
+    }
+
+    // a where clause on a binary column takes the bytes
+    val found = devices.query().where("token", BinaryIds.uuidBytes(uuid)).first()
+    ```
+
+Keep these limits in mind:
+
+- `binary:uuid` reads and writes a `java.util.UUID`, and a write takes a `UUID` only.
+- `binary:ulid` reads a lower-case 26-character `String` and writes a strict 26-character ULID in
+  any case: digits 0-9 and letters A-Z without I, L, O and U, the first character 0 to 7. Any other
+  text fails as `InvalidCastException`.
+- Any other value type fails as `InvalidCastException`.
+- A `where` clause on such a column compares bytes. Pass `BinaryIds.uuidBytes(uuid)` or
+  `BinaryIds.ulidBytes(text)`; a `UUID` or text does not match.
+- `toMap()` and `toJson()` give the text form.
+- A null value stays SQL NULL.
+- A stored value that is not exactly 16 bytes fails as `InvalidCastException`.
+- The key of a model with a binary key is not generated as bytes. This is not supported.
 
 Date formats are Java `DateTimeFormatter` patterns. Write `yyyy-MM-dd`, not PHP's `Y-m-d`: the PHP
 form compiles in Java and means something else.
@@ -374,6 +553,9 @@ kept. `beforeWrite()` runs on each row, but no model event fires. The list forms
 one statement, so all rows need the same columns, and a large batch must stay under the binding
 limit (999 on SQLite before 3.32).
 
+To build models for tests and seeding, see [factories](factories.md): `Factory` makes, creates or inserts
+models from a definition you write.
+
 ## Query shortcuts
 
 `whereBelongsTo` filters the children of a parent through the `belongsTo` relation the child
@@ -568,6 +750,11 @@ page. `simplePaginate` and `cursorPaginate` work as on the query builder.
 - Models are not thread-safe. Share the `ModelQuery`; give each thread its own instances.
 - Without a `bool` cast, a `Boolean` set on a SQLite column reads back as `1` and stays dirty
   against `true`.
+- Diwan does no cryptography. An encrypted column must be text, cannot be used in a `where`
+  clause, and an encrypter failure surfaces as `InvalidCastException`.
+- Diwan does no hashing. A hashed column must be text, a `hashed` cast takes a `String` only,
+  and a hasher failure surfaces as `InvalidCastException`.
+- A `binary:uuid` or `binary:ulid` column must be `binary()`, a `where` clause on it takes the bytes from `BinaryIds`, and a stored value that is not 16 bytes surfaces as `InvalidCastException`.
 - Listeners and scopes belong to the class registered with `ModelQuery.of`; a subclass registered
   separately has its own list.
 
@@ -592,6 +779,11 @@ Public methods that the sections above do not cover, one row per method name (ov
 | `getTable` `getKeyName` `getKeyType` `getIncrementing` `getQualifiedKeyName` `qualifyColumn` `getForeignKey` `getPerPage` `getUniqueIdKind` | `Model` | Model settings as the model resolves them: table, primary key name and type, whether the database assigns the key, the key qualified by table (`users.id`), a column qualified by table, the foreign key name other tables use for this model, the default page size and the unique id kind. | `post.getQualifiedKeyName()` |
 | `getConnection` `getConnectionName` `setConnection` `getQueryFactory` `newBaseQuery` | `Model` | Connection access: the model's connection and its name, binding the model to a query factory (`setConnection`), the factory it uses, and a new base query builder on the model's table. | `post.newBaseQuery().where("id", 1)` |
 | `Casts.instant` | `Casts` | A cast that stores an `Instant` whatever the model's timestamp format, for `Blueprint.instant` columns. Timestamp columns also need `TimestampFormat.INSTANT`. | `.put("sent_at", Casts.instant())` |
+| `Casts.encrypted` | `Casts` | The `encrypted` cast: `encrypted()` stores a string as the encrypter's text, `encrypted(Cast)` wraps another cast (`Casts.json()`, `Casts.jsonUnicode()`, `Casts.collection()`, `Casts.object()`). The model needs an `attributeEncrypter()`. | `.put("secret", Casts.encrypted())` |
+| `Casts.hashed` | `Casts` | The `hashed` cast: stores a `String` as the hasher's hash and takes a `String` only. The model needs an `attributeHasher()`. | `.put("password", Casts.hashed())` |
+| `Casts.binaryUuid` `Casts.binaryUlid` `BinaryIds` | `Casts` | The `binary:uuid` and `binary:ulid` casts: store a `UUID` or a ULID `String` as 16 bytes in a `binary()` column. `BinaryIds.uuidBytes` and `BinaryIds.ulidBytes` give the bytes for a `where` clause. | `.put("token", Casts.binaryUuid())` |
+| `attributeEncrypter` `getAttributeEncrypter` | `Model` | The encrypter the model's `encrypted` casts use: override `attributeEncrypter()` to return your `AttributeEncrypter`, and `getAttributeEncrypter()` reads it. None by default. | `post.getAttributeEncrypter()` |
+| `attributeHasher` `getAttributeHasher` | `Model` | The hasher the model's `hashed` casts use: override `attributeHasher()` to return your `AttributeHasher`, and `getAttributeHasher()` reads it. None by default. | `user.getAttributeHasher()` |
 | `Casts.decimal` | `Casts` | `decimal(scale)` is the rounding `decimal:N` cast. `decimal(precision, scale[, mode])` is the strict cast: precision and scale as in `Blueprint.decimal`, extra decimals refused unless a rounding mode is given. | `.put("total", Casts.decimal(6, 2))` |
 | `getJsonCodec` `getDateFormat` `getTimestampFormat` `setClock` | `Model` | Time and JSON settings: the codec behind JSON casts and the JSON form, the pattern of text timestamps, how timestamps are written, and the clock the model reads timestamps from. | `post.setClock(clock)` |
 | `getCreatedAtColumn` `getUpdatedAtColumn` `getDeletedAtColumn` `getQualifiedDeletedAtColumn` `usesTimestamps` | `Model` | Timestamp columns: the created-at, updated-at and deleted-at column names (the last one also qualified by table), and whether the model writes timestamps now. | `post.usesTimestamps()` |

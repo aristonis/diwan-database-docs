@@ -5,6 +5,17 @@ The full list of changes in each version is in the
 also has a page on [GitHub Releases](https://github.com/aristonis/diwan-database/releases), with the
 same notes and the release files.
 
+## 0.5.0 (2026-11-13)
+
+Model data. Nothing breaks. It adds:
+
+- **Search:** a `SearchOptions` argument for the escaped search methods. The boolean
+  `caseSensitive` overloads are deprecated and go in 0.6.0. See [Query builder](query-builder.md).
+- **Casts:** collection and object casts, encrypted casts and a hashed cast (you supply the
+  encrypter and the hasher), and binary UUID and ULID casts. See [Models](models.md).
+- **Factories:** `Factory` and `Sequence` with states, relations and `recycle`. See
+  [Factories](factories.md) and [Factory relations](factory-relations.md).
+
 ## 0.4.0 (2026-11-11)
 
 Schema, migrations and test support. Code compiled against 0.3.x must be recompiled; see the
