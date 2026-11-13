@@ -553,6 +553,9 @@ kept. `beforeWrite()` runs on each row, but no model event fires. The list forms
 one statement, so all rows need the same columns, and a large batch must stay under the binding
 limit (999 on SQLite before 3.32).
 
+To build models for tests and seeding, see [factories](factories.md): `Factory` makes, creates or inserts
+models from a definition you write.
+
 ## Query shortcuts
 
 `whereBelongsTo` filters the children of a parent through the `belongsTo` relation the child
