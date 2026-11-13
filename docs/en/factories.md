@@ -5,7 +5,7 @@ typical row, and ask for one model or many, saved or not. States change the defi
 call, and sequences vary it from row to row.
 
 Factories live in `diwan-database-eloquent`, in the package
-`org.aristonis.diwan.database.eloquent.factory`. They have two public types: `Factory` and `Sequence`.
+`org.aristonis.diwan.database.eloquent.factory`. They have two public types: `Factory` and `Sequence`. Related models, owners and recycling are on [Factory relations](factory-relations.md); that page adds a third type, `RecycleMode`.
 
 Diwan has no fake or random data. The definition is your own lambda: a fixed value, a counter, or
 any data library you already use. Nothing on this page needs a library.
@@ -415,7 +415,7 @@ Messages name a class, a position or an attribute, and never a value.
 | `insert` with rows that have different keys | `IllegalArgumentException` |
 | a `null` argument, a `null` key or a `null` sequence entry | `NullPointerException` |
 
-## Later
+## Related models
 
-Factories for related models (`has`, `for`) and sharing one parent across a graph (`recycle`) are
-not part of this release. Create the related rows in an `afterCreating` hook, as shown above.
+To build related models with `has`, `hasAttached` and `forParent`, to share parents with `recycle`, or to use a
+parent in a state or hook, see [Factory relations](factory-relations.md).
